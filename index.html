@@ -204,7 +204,7 @@
       <header class="post-header">
         <h1 class="post-title" itemprop="name headline">
           
-            <a href="/2020/01/01/kubebuilder-2/" class="post-title-link" itemprop="url">kubebuilder-2</a>
+            <a href="/2020/01/01/kubebuilder-2/" class="post-title-link" itemprop="url">kubebuilder-2:原理</a>
         </h1>
 
         <div class="post-meta">
@@ -221,7 +221,7 @@
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2020-01-02 00:25:25" itemprop="dateModified" datetime="2020-01-02T00:25:25+08:00">2020-01-02</time>
+                <time title="修改时间：2020-01-02 00:40:49" itemprop="dateModified" datetime="2020-01-02T00:40:49+08:00">2020-01-02</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -249,7 +249,7 @@
           <blockquote>
 <p><strong>导读</strong>：上一篇blog主要是简单介绍了一下kubebuilder的使用，这里再分析一下kubebuilder的代码逻辑。</p>
 </blockquote>
-<h2 id="1-kubebuilder的基础：controller"><a href="#1-kubebuilder的基础：controller" class="headerlink" title="1.kubebuilder的基础：controller"></a>1.kubebuilder的基础：controller</h2><p>首先介绍一下k8s的一个controller的逻辑，下图主要参考client-go给的一个<a href="https://github.com/kubernetes/client-go/blob/master/examples/workqueue/main.go">workQueue的例子</a>：<br><img src="/2020/01/01/kubebuilder-2/controller.png" alt="Controller"><br>这里我把代码分为通用的<strong>Common part</strong>和<strong>Special Part</strong>。前者是<a href="https://github.com/kubernetes/client-go">client-go</a>的基本流程，而后者部分是controller自身逻辑部分。具体过程包含8个步骤：</p>
+<h2 id="1-kubebuilder的基础：controller"><a href="#1-kubebuilder的基础：controller" class="headerlink" title="1.kubebuilder的基础：controller"></a>1.kubebuilder的基础：controller</h2><p>首先介绍一下k8s的一个controller的逻辑，下图主要参考client-go给的一个<a href="https://github.com/kubernetes/client-go/blob/master/examples/workqueue/main.go">workQueue的例子</a>：<br><img src="/01/kubebuilder-2/controller.png" alt="Controller"><br>这里我把代码分为通用的<strong>Common part</strong>和<strong>Special Part</strong>。前者是<a href="https://github.com/kubernetes/client-go">client-go</a>的基本流程，而后者部分是controller自身逻辑部分。具体过程包含8个步骤：</p>
 <p>1.Reflector通过<code>ListAndWatch</code>方法去监听指定的Object；</p>
 <figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *Reflector)</span> <span class="title">Run</span><span class="params">(stopCh &lt;-<span class="keyword">chan</span> <span class="keyword">struct</span>&#123;&#125;)</span></span> &#123;</span><br><span class="line">	klog.V(<span class="number">3</span>).Infof(<span class="string">"Starting reflector %v (%s) from %s"</span>, r.expectedTypeName, r.resyncPeriod, r.name)</span><br><span class="line">	wait.Until(<span class="function"><span class="keyword">func</span><span class="params">()</span></span> &#123;</span><br><span class="line">		<span class="keyword">if</span> err := r.ListAndWatch(stopCh); err != <span class="literal">nil</span> &#123;</span><br><span class="line">			utilruntime.HandleError(err)</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;, r.period, stopCh)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 <p>2.Reflector会将所监听到的event，包括对object的<code>Add</code>，<code>Update</code>，<code>Delete</code>的操作push到<strong>DeltaFIFO</strong>这个queue中；</p>
