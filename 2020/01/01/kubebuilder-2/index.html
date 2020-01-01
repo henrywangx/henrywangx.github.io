@@ -50,17 +50,20 @@
   };
 </script>
 
-  <meta name="description" content="最近发现各位大佬的blog风格都挺小清新的，google得知有Hexo这个blog神器，于是也尝试搭建自己的blog用于继续记录自己的所思所得。 之前的blog都放在简书上，以后自己的blog都主要会在此更新，简书上面的blog尽力同步更新。">
+  <meta name="description" content="导读：上一篇blog主要是简单介绍了一下kubebuilder的使用，这里再分析一下kubebuilder的代码逻辑。  1.kubebuilder的基础：controller首先介绍一下k8s的一个controller的逻辑，下图主要参考client-go给的一个workQueue的例子：这里我把代码分为通用的Common part和Special Part。前者是client-go的基本流程">
+<meta name="keywords" content="Kubernetes,CRD,kubebuilder">
 <meta property="og:type" content="article">
-<meta property="og:title" content="开启个人blog">
-<meta property="og:url" content="&#x2F;2019&#x2F;11&#x2F;03&#x2F;first-blog&#x2F;">
+<meta property="og:title" content="kubebuilder-2">
+<meta property="og:url" content="&#x2F;2020&#x2F;01&#x2F;01&#x2F;kubebuilder-2&#x2F;">
 <meta property="og:site_name" content="大雄的部落阁">
-<meta property="og:description" content="最近发现各位大佬的blog风格都挺小清新的，google得知有Hexo这个blog神器，于是也尝试搭建自己的blog用于继续记录自己的所思所得。 之前的blog都放在简书上，以后自己的blog都主要会在此更新，简书上面的blog尽力同步更新。">
+<meta property="og:description" content="导读：上一篇blog主要是简单介绍了一下kubebuilder的使用，这里再分析一下kubebuilder的代码逻辑。  1.kubebuilder的基础：controller首先介绍一下k8s的一个controller的逻辑，下图主要参考client-go给的一个workQueue的例子：这里我把代码分为通用的Common part和Special Part。前者是client-go的基本流程">
 <meta property="og:locale" content="zh-CN">
-<meta property="og:updated_time" content="2019-11-03T07:54:29.000Z">
+<meta property="og:image" content="&#x2F;2020&#x2F;01&#x2F;01&#x2F;kubebuilder-2&#x2F;kubebuilder-2&#x2F;controller.png">
+<meta property="og:updated_time" content="2020-01-01T15:58:30.000Z">
 <meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="&#x2F;2020&#x2F;01&#x2F;01&#x2F;kubebuilder-2&#x2F;kubebuilder-2&#x2F;controller.png">
 
-<link rel="canonical" href="/2019/11/03/first-blog/">
+<link rel="canonical" href="/2020/01/01/kubebuilder-2/">
 
 
 <script id="page-configurations">
@@ -74,7 +77,7 @@
   };
 </script>
 
-  <title>开启个人blog | 大雄的部落阁</title>
+  <title>kubebuilder-2 | 大雄的部落阁</title>
   
 
 
@@ -191,7 +194,7 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block " lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="/2019/11/03/first-blog/">
+    <link itemprop="mainEntityOfPage" href="/2020/01/01/kubebuilder-2/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
       <meta itemprop="image" content="/images/avatar.gif">
@@ -204,7 +207,7 @@
     </span>
       <header class="post-header">
         <h1 class="post-title" itemprop="name headline">
-          开启个人blog
+          kubebuilder-2
         </h1>
 
         <div class="post-meta">
@@ -215,7 +218,7 @@
               <span class="post-meta-item-text">发表于</span>
               
 
-              <time title="创建时间：2019-11-03 00:35:30 / 修改时间：15:54:29" itemprop="dateCreated datePublished" datetime="2019-11-03T00:35:30+08:00">2019-11-03</time>
+              <time title="创建时间：2020-01-01 23:55:51 / 修改时间：23:58:30" itemprop="dateCreated datePublished" datetime="2020-01-01T23:55:51+08:00">2020-01-01</time>
             </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -223,8 +226,8 @@
               </span>
               <span class="post-meta-item-text">分类于</span>
                 <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E9%9A%8F%E7%AC%94/" itemprop="url" rel="index">
-                    <span itemprop="name">随笔</span>
+                  <a href="/categories/Cloud/" itemprop="url" rel="index">
+                    <span itemprop="name">Cloud</span>
                   </a>
                 </span>
             </span>
@@ -240,8 +243,32 @@
     <div class="post-body" itemprop="articleBody">
 
       
-        <p>最近发现各位大佬的blog风格都挺小清新的，google得知有<a href="https://hexo.io">Hexo</a>这个blog神器，于是也尝试搭建自己的blog用于继续记录自己的所思所得。</p>
-<p>之前的blog都放在<a href="https://www.jianshu.com/u/4d0fe9f124a2">简书</a>上，以后自己的blog都主要会在此更新，简书上面的blog尽力同步更新。</p>
+        <blockquote>
+<p><strong>导读</strong>：上一篇blog主要是简单介绍了一下kubebuilder的使用，这里再分析一下kubebuilder的代码逻辑。</p>
+</blockquote>
+<h2 id="1-kubebuilder的基础：controller"><a href="#1-kubebuilder的基础：controller" class="headerlink" title="1.kubebuilder的基础：controller"></a>1.kubebuilder的基础：controller</h2><p>首先介绍一下k8s的一个controller的逻辑，下图主要参考client-go给的一个<a href="https://github.com/kubernetes/client-go/blob/master/examples/workqueue/main.go">workQueue的例子</a>：<br><img src="./kubebuilder-2/controller.png" alt="Controller"><br>这里我把代码分为通用的<strong>Common part</strong>和<strong>Special Part</strong>。前者是<a href="https://github.com/kubernetes/client-go">client-go</a>的基本流程，而后者部分是controller自身逻辑部分。具体过程包含8个步骤：</p>
+<p>1.Reflector通过<code>ListAndWatch</code>方法去监听指定的Object；</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *Reflector)</span> <span class="title">Run</span><span class="params">(stopCh &lt;-<span class="keyword">chan</span> <span class="keyword">struct</span>&#123;&#125;)</span></span> &#123;</span><br><span class="line">	klog.V(<span class="number">3</span>).Infof(<span class="string">"Starting reflector %v (%s) from %s"</span>, r.expectedTypeName, r.resyncPeriod, r.name)</span><br><span class="line">	wait.Until(<span class="function"><span class="keyword">func</span><span class="params">()</span></span> &#123;</span><br><span class="line">		<span class="keyword">if</span> err := r.ListAndWatch(stopCh); err != <span class="literal">nil</span> &#123;</span><br><span class="line">			utilruntime.HandleError(err)</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;, r.period, stopCh)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>2.Reflector会将所监听到的event，包括对object的<code>Add</code>，<code>Update</code>，<code>Delete</code>的操作push到<strong>DeltaFIFO</strong>这个queue中；</p>
+<p>3.Informer首先会解析event中的action和object；</p>
+<p>4.Informer将解析的object更新到local store，也就是本地cache中的数据更新；</p>
+<p>5.然后Informer会执行Controller在初始化Infromer时注册的<strong>ResourceEventHandler</strong>(这些callback是可以自己修改的)；</p>
+<p>6.ResourceEventHandler中注册的callback会将对应变化的object的key存入其初始化的一个workQueue；<br>7.最终controller会循环进行reconcile，就是从workQueue不停地pop key，然后去local store中取到对应的object，然后进行处理，最终多数情况会再通过client去更新这个object。</p>
+<blockquote>
+<p>上面这个具体过程，我看网上大佬们也都分析过很多次了，但是根据我的经验呢，还是需要去看一遍代码心里才有底。以后出问题或者二次开发的时候，都是需要知道重要的结构体和API的。</p>
+</blockquote>
+<h2 id="2-kubebuilder的封装"><a href="#2-kubebuilder的封装" class="headerlink" title="2.kubebuilder的封装"></a>2.kubebuilder的封装</h2><p>想说明一下kubebuilder实际上是提供了对client-go进行封装的library，更加便利我们来开发k8s的operator。</p>
+<p>我上面提到的<a href="https://github.com/kubernetes/client-go/blob/master/examples/workqueue/main.go">workQueue的例子</a>已经实现了一个controller的逻辑。而kubebuilder还帮我们做了以下的额外工作：</p>
+<ol>
+<li>kubebuilder引入了manager这个概念，一个manager可以管理多个controller，而这些controller会共享manager的client；</li>
+<li>如果manager挂掉或者停止了，所有的controller也会随之停止；</li>
+<li>kubebuilder使用一个<code>map[GroupVersionKind]informer</code>来管理这些controller，所以每个controller还是拥有其独立的workQueue，deltaFIFO，并且kubebuilder也已经帮我们实现了这部分代码；</li>
+<li>我们主要需要做的开发，就是写<code>Reconcile</code>中的逻辑。</li>
+</ol>
+<p>1.Manager通过<code>map[GroupVersionKind]informer</code>启动所有controller：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(ip *specificInformersMap)</span> <span class="title">Start</span><span class="params">(stop &lt;-<span class="keyword">chan</span> <span class="keyword">struct</span>&#123;&#125;)</span></span> &#123;</span><br><span class="line">...</span><br><span class="line">		<span class="keyword">for</span> _, informer := <span class="keyword">range</span> ip.informersByGVK &#123;</span><br><span class="line">			<span class="keyword">go</span> informer.Informer.Run(stop)</span><br><span class="line">		&#125;</span><br><span class="line">...</span><br><span class="line">	&lt;-stop</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>2.Controller处理event的逻辑都在<a href="https://github.com/kubernetes-sigs/controller-runtime/blob/master/pkg/internal/controller/controller.go">https://github.com/kubernetes-sigs/controller-runtime/blob/master/pkg/internal/controller/controller.go</a>这个文件里面，其实它就是实现了workqueue这个例子的大部分代码，推荐先看懂这个例子再来分析这个文件。</p>
+<p>#3.小结<br>写这篇blog本来想讲一下kubebuilder的代码流程的，但是发现要理解kubebuilder必须先理解client-go，基本上client-go代码熟悉之后再来分析kubebuilder就easy了…我自己太笨了，花了很多时间去啃client-go，假期余额紧张，所以关于kubebuilder自身的分析就没写太多了，有时间再补充吧。网上有一篇关于<a href="https://juejin.im/post/5d8acac2e51d4577f54a0fd2">kubebuilder的分析</a>，有兴趣的同学可以参考一下吧，但是我觉得做二次开发一定要看自己亲自看和分析一遍。</p>
 
     </div>
 
@@ -250,19 +277,24 @@
     
 
       <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Kubernetes/" rel="tag"># Kubernetes</a>
+              <a href="/tags/CRD/" rel="tag"># CRD</a>
+              <a href="/tags/kubebuilder/" rel="tag"># kubebuilder</a>
+          </div>
 
         
 
           <div class="post-nav">
             <div class="post-nav-next post-nav-item">
+                <a href="/2019/12/29/kubebuilder-1/" rel="next" title="kubebuilder(1)-安装和使用">
+                  <i class="fa fa-chevron-left"></i> kubebuilder(1)-安装和使用
+                </a>
             </div>
 
             <span class="post-nav-divider"></span>
 
             <div class="post-nav-prev post-nav-item">
-                <a href="/2019/12/16/find-job/" rel="prev" title="从裁员到找工作再入职的感想">
-                  从裁员到找工作再入职的感想 <i class="fa fa-chevron-right"></i>
-                </a>
             </div>
           </div>
       </footer>
@@ -302,6 +334,7 @@
 
       <!--noindex-->
       <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-kubebuilder的基础：controller"><span class="nav-number">1.</span> <span class="nav-text">1.kubebuilder的基础：controller</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-kubebuilder的封装"><span class="nav-number">2.</span> <span class="nav-text">2.kubebuilder的封装</span></a></li></ol></div>
       </div>
       <!--/noindex-->
 
@@ -432,7 +465,7 @@
       repo: 'henrywangx.github.io',
       owner: 'henrywangx',
       admin: ['henrywangx'],
-      id: '75fb45e66c15db2a6cd0e614a449555c',
+      id: 'dc3c6ec194ccba8e9d86fdc8e5378a2f',
         language: '',
       distractionFreeMode: 'true'
     });
