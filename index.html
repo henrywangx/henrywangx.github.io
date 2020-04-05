@@ -190,6 +190,108 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block home" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="/2020/03/29/kubelet-1/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="雄哥good">
+      <meta itemprop="description" content="技术日新月异，碎片化的学习总不得安心，因此开此blog定期记录和总结所思和所得">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="大雄的部落阁">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          
+            <a href="/2020/03/29/kubelet-1/" class="post-title-link" itemprop="url">kubelet启动和syncLoop过程源码分析</a>
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2020-03-29 22:59:44" itemprop="dateCreated datePublished" datetime="2020-03-29T22:59:44+08:00">2020-03-29</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2020-04-05 20:56:03" itemprop="dateModified" datetime="2020-04-05T20:56:03+08:00">2020-04-05</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Cloud/" itemprop="url" rel="index">
+                    <span itemprop="name">Cloud</span>
+                  </a>
+                </span>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <blockquote>
+<p>导读：目前完全专注于云原生的paas平台建设上，为了进一步了解k8s并且方便debug，因此对kubelet的源码进行初步分析和学习。其实网上分析kubelet的文章已经蛮多了，但是不过一遍代码，会给人仅仅背书的印象。这里主要简单梳理kubelet的启动过程和syncLoop过程，kubelet的各个组件可以后面单独分析和整理。</p>
+</blockquote>
+<h2 id="启动过程"><a href="#启动过程" class="headerlink" title="启动过程"></a>启动过程</h2><p>kubelet的启动入口函数和其他组件一样，放在<code>cmd/kubelet/kubelet.go</code>下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">main</span><span class="params">()</span></span> &#123;</span><br><span class="line">	rand.Seed(time.Now().UnixNano())</span><br><span class="line"></span><br><span class="line">	command := app.NewKubeletCommand()</span><br><span class="line">	logs.InitLogs()</span><br><span class="line">	<span class="keyword">defer</span> logs.FlushLogs()</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> err := command.Execute(); err != <span class="literal">nil</span> &#123;</span><br><span class="line">		os.Exit(<span class="number">1</span>)</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>通过调用<code>NewKubeletCommand</code>来创建cobra的一个command对象，在该对象<code>Run</code>方法中主要做了三件事：通过传入command的参数和配置文件传入kubelet所需的配置信息，初始化kubeletDeps(指明kubelet所依赖的组件)，然后调用<code>Run</code>创建并启动kubelet：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// NewKubeletCommand creates a *cobra.Command object with default parameters</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">NewKubeletCommand</span><span class="params">()</span> *<span class="title">cobra</span>.<span class="title">Command</span></span> &#123;</span><br><span class="line">...</span><br><span class="line">		Run: <span class="function"><span class="keyword">func</span><span class="params">(cmd *cobra.Command, args []<span class="keyword">string</span>)</span></span> &#123;</span><br><span class="line">...</span><br><span class="line">			<span class="comment">// construct a KubeletServer from kubeletFlags and kubeletConfig</span></span><br><span class="line">			kubeletServer := &amp;options.KubeletServer&#123;</span><br><span class="line">				KubeletFlags:         *kubeletFlags,</span><br><span class="line">				KubeletConfiguration: *kubeletConfig,</span><br><span class="line">			&#125;</span><br><span class="line">...</span><br><span class="line">			<span class="comment">// use kubeletServer to construct the default KubeletDeps</span></span><br><span class="line">			kubeletDeps, err := UnsecuredDependencies(kubeletServer, utilfeature.DefaultFeatureGate)</span><br><span class="line">			<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">				klog.Fatal(err)</span><br><span class="line">			&#125;</span><br><span class="line">...</span><br><span class="line">			<span class="comment">// run the kubelet</span></span><br><span class="line">			klog.V(<span class="number">5</span>).Infof(<span class="string">"KubeletConfiguration: %#v"</span>, kubeletServer.KubeletConfiguration)</span><br><span class="line">			<span class="keyword">if</span> err := Run(kubeletServer, kubeletDeps, utilfeature.DefaultFeatureGate, stopCh); err != <span class="literal">nil</span> &#123;</span><br><span class="line">				klog.Fatal(err)</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;,</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>Run</code>中仅仅调用了<code>run</code>，所以直接查看<code>run</code>函数，<code>run</code>主要干了以下几件事:</p>
+<ol>
+<li>初始化一下基本配置，包括kubeclient，eventclient，heartbeatclient，ContainerManager…；</li>
+<li>通过<code>PreInitRuntimeService</code>初始化CRI，创建容器和执行kubectl exec的流式Server都是在这里初始化；</li>
+<li>通过<code>RunKubelet</code>初始化kubelet所有依赖的组件，获取docker的配置文件路径，并且运行kubelet;</li>
+</ol>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">run</span><span class="params">(s *options.KubeletServer, kubeDeps *kubelet.Dependencies, featureGate featuregate.FeatureGate, stopCh &lt;-<span class="keyword">chan</span> <span class="keyword">struct</span>&#123;&#125;)</span> <span class="params">(err error)</span></span> &#123;</span><br><span class="line">...</span><br><span class="line">	err = kubelet.PreInitRuntimeService(&amp;s.KubeletConfiguration,</span><br><span class="line">		kubeDeps, &amp;s.ContainerRuntimeOptions,</span><br><span class="line">		s.ContainerRuntime,</span><br><span class="line">		s.RuntimeCgroups,</span><br><span class="line">		s.RemoteRuntimeEndpoint,</span><br><span class="line">		s.RemoteImageEndpoint,</span><br><span class="line">		s.NonMasqueradeCIDR)</span><br><span class="line">...</span><br><span class="line">	<span class="keyword">if</span> err := RunKubelet(s, kubeDeps, s.RunOnce); err != <span class="literal">nil</span> &#123;</span><br><span class="line">		<span class="keyword">return</span> err</span><br><span class="line">	&#125;</span><br><span class="line">...			</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>接下来重点说一下<code>RunKubelet</code>，它一个是会通过<code>createAndInitKubelet</code>来实例化一个kubelet(包含各种manager和module的注册)，再通过<code>startKubelet</code>通过<code>Kubelet.Run</code>启动kubelet以及其注册的所有manager和module:</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">RunKubelet</span><span class="params">(kubeServer *options.KubeletServer, kubeDeps *kubelet.Dependencies, runOnce <span class="keyword">bool</span>)</span> <span class="title">error</span></span> &#123;</span><br><span class="line">...</span><br><span class="line">	k, err := createAndInitKubelet(&amp;kubeServer.KubeletConfiguration,</span><br><span class="line">		kubeDeps,</span><br><span class="line">		&amp;kubeServer.ContainerRuntimeOptions,</span><br><span class="line">		kubeServer.ContainerRuntime,</span><br><span class="line">		kubeServer.HostnameOverride,</span><br><span class="line">		kubeServer.NodeIP,</span><br><span class="line">		kubeServer.ProviderID,</span><br><span class="line">		kubeServer.CloudProvider,</span><br><span class="line">		kubeServer.CertDirectory,</span><br><span class="line">		kubeServer.RootDirectory,</span><br><span class="line">		kubeServer.RegisterNode,</span><br><span class="line">		kubeServer.RegisterWithTaints,</span><br><span class="line">		kubeServer.AllowedUnsafeSysctls,</span><br><span class="line">		kubeServer.ExperimentalMounterPath,</span><br><span class="line">		kubeServer.ExperimentalKernelMemcgNotification,</span><br><span class="line">		kubeServer.ExperimentalCheckNodeCapabilitiesBeforeMount,</span><br><span class="line">		kubeServer.ExperimentalNodeAllocatableIgnoreEvictionThreshold,</span><br><span class="line">		kubeServer.MinimumGCAge,</span><br><span class="line">		kubeServer.MaxPerPodContainerCount,</span><br><span class="line">		kubeServer.MaxContainerCount,</span><br><span class="line">		kubeServer.MasterServiceNamespace,</span><br><span class="line">		kubeServer.RegisterSchedulable,</span><br><span class="line">		kubeServer.KeepTerminatedPodVolumes,</span><br><span class="line">		kubeServer.NodeLabels,</span><br><span class="line">		kubeServer.SeccompProfileRoot,</span><br><span class="line">		kubeServer.BootstrapCheckpointPath,</span><br><span class="line">		kubeServer.NodeStatusMaxImages)</span><br><span class="line">...</span><br><span class="line">		startKubelet(k, podCfg, &amp;kubeServer.KubeletConfiguration, kubeDeps, kubeServer.EnableCAdvisorJSONEndpoints, kubeServer.EnableServer)</span><br><span class="line">...</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">startKubelet</span><span class="params">(k kubelet.Bootstrap, podCfg *config.PodConfig, kubeCfg *kubeletconfiginternal.KubeletConfiguration, kubeDeps *kubelet.Dependencies, enableCAdvisorJSONEndpoints, enableServer <span class="keyword">bool</span>)</span></span> &#123;</span><br><span class="line">	<span class="comment">// start the kubelet</span></span><br><span class="line">	<span class="keyword">go</span> wait.Until(<span class="function"><span class="keyword">func</span><span class="params">()</span></span> &#123;</span><br><span class="line">		k.Run(podCfg.Updates())</span><br><span class="line">	&#125;, <span class="number">0</span>, wait.NeverStop)</span><br><span class="line"></span><br><span class="line">	<span class="comment">// start the kubelet server</span></span><br><span class="line">	<span class="keyword">if</span> enableServer &#123;</span><br><span class="line">		<span class="keyword">go</span> k.ListenAndServe(net.ParseIP(kubeCfg.Address), <span class="keyword">uint</span>(kubeCfg.Port), kubeDeps.TLSOptions, kubeDeps.Auth, enableCAdvisorJSONEndpoints, kubeCfg.EnableDebuggingHandlers, kubeCfg.EnableContentionProfiling)</span><br><span class="line"></span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">if</span> kubeCfg.ReadOnlyPort &gt; <span class="number">0</span> &#123;</span><br><span class="line">		<span class="keyword">go</span> k.ListenAndServeReadOnly(net.ParseIP(kubeCfg.Address), <span class="keyword">uint</span>(kubeCfg.ReadOnlyPort), enableCAdvisorJSONEndpoints)</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">if</span> utilfeature.DefaultFeatureGate.Enabled(features.KubeletPodResources) &#123;</span><br><span class="line">		<span class="keyword">go</span> k.ListenAndServePodResources()</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Run starts the kubelet reacting to config updates</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(kl *Kubelet)</span> <span class="title">Run</span><span class="params">(updates &lt;-<span class="keyword">chan</span> kubetypes.PodUpdate)</span></span> &#123;</span><br><span class="line">	<span class="keyword">if</span> kl.logServer == <span class="literal">nil</span> &#123;</span><br><span class="line">		kl.logServer = http.StripPrefix(<span class="string">"/logs/"</span>, http.FileServer(http.Dir(<span class="string">"/var/log/"</span>)))</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">if</span> kl.kubeClient == <span class="literal">nil</span> &#123;</span><br><span class="line">		klog.Warning(<span class="string">"No api server defined - no node status update will be sent."</span>)</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Start the cloud provider sync manager</span></span><br><span class="line">	<span class="keyword">if</span> kl.cloudResourceSyncManager != <span class="literal">nil</span> &#123;</span><br><span class="line">		<span class="keyword">go</span> kl.cloudResourceSyncManager.Run(wait.NeverStop)</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> err := kl.initializeModules(); err != <span class="literal">nil</span> &#123;</span><br><span class="line">		kl.recorder.Eventf(kl.nodeRef, v1.EventTypeWarning, events.KubeletSetupFailed, err.Error())</span><br><span class="line">		klog.Fatal(err)</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Start volume manager</span></span><br><span class="line">	<span class="keyword">go</span> kl.volumeManager.Run(kl.sourcesReady, wait.NeverStop)</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> kl.kubeClient != <span class="literal">nil</span> &#123;</span><br><span class="line">		<span class="comment">// Start syncing node status immediately, this may set up things the runtime needs to run.</span></span><br><span class="line">		<span class="keyword">go</span> wait.Until(kl.syncNodeStatus, kl.nodeStatusUpdateFrequency, wait.NeverStop)</span><br><span class="line">		<span class="keyword">go</span> kl.fastStatusUpdateOnce()</span><br><span class="line"></span><br><span class="line">		<span class="comment">// start syncing lease</span></span><br><span class="line">		<span class="keyword">go</span> kl.nodeLeaseController.Run(wait.NeverStop)</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">go</span> wait.Until(kl.updateRuntimeUp, <span class="number">5</span>*time.Second, wait.NeverStop)</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Set up iptables util rules</span></span><br><span class="line">	<span class="keyword">if</span> kl.makeIPTablesUtilChains &#123;</span><br><span class="line">		kl.initNetworkUtil()</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Start a goroutine responsible for killing pods (that are not properly</span></span><br><span class="line">	<span class="comment">// handled by pod workers).</span></span><br><span class="line">	<span class="keyword">go</span> wait.Until(kl.podKiller, <span class="number">1</span>*time.Second, wait.NeverStop)</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Start component sync loops.</span></span><br><span class="line">	kl.statusManager.Start()</span><br><span class="line">	kl.probeManager.Start()</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Start syncing RuntimeClasses if enabled.</span></span><br><span class="line">	<span class="keyword">if</span> kl.runtimeClassManager != <span class="literal">nil</span> &#123;</span><br><span class="line">		kl.runtimeClassManager.Start(wait.NeverStop)</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Start the pod lifecycle event generator.</span></span><br><span class="line">	kl.pleg.Start()</span><br><span class="line">	kl.syncLoop(updates, kl)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="syncLoop过程"><a href="#syncLoop过程" class="headerlink" title="syncLoop过程"></a>syncLoop过程</h2><p>从Kubelet启动的<code>Kubelet.Run</code>最后一行代码，<code>kl.syncLoop(updates, kl)</code>，跳进去我们就可以看到kubelet最核心的syncLoop过程，也就是更新pod消息处理过程。这里就直接画图来解释了。</p>
+<ol>
+<li>用户从http，静态文件以及APIServer对pod的修改通过<code>PodConfig</code>channel传递到<code>syncLoop</code>；</li>
+<li><code>syncLoop</code>的<code>syncLoopIteration</code>从<code>PodConfig</code>中取出update的内容，一方面会通过<code>podManger</code>里更新pod状态，另一方面会通过<code>dispatchWork</code>将更新内容通过<code>PodWoker</code>更新pod状态，调用的是<code>syncPod</code>这个接口(由<code>Kubelet.syncPod</code>实现)；</li>
+<li>而<code>syncPod</code>这里通过<code>podStatusChannel</code>channel更新状态到<code>statusManager</code>, 再patch Status到APIServer；</li>
+<li><code>syncPod</code>一方面通过<code>containerManager</code>更新non-runtime的信息，例如QoS，Cgroup信息；另外一方面通过CRI更新pod的状态(对于更加详细的pod操作过程主要通过研究Dockershim，或者其他shim就可以搞清楚了)；</li>
+<li>另外一方面，<code>PLEG</code>会周期(默认1s)通过<code>relist</code>从CRI获取所有pod当前状态并且跟之前状态对比产生Pod的event发送到<code>syncLoop</code>;</li>
+</ol>
+<p><img src="/2020/03/29/kubelet-1/overview.jpg" alt="Kubelet SyncLoop"></p>
+<h1 id="小结"><a href="#小结" class="headerlink" title="小结"></a>小结</h1><p>本文对kubelet的启动过程进行了学习和总结，并且简单介绍了一下syncLoop的处理流程。大概清楚了kubelet的代码结构，后面可以针对CRI，CSI以及Device Plugin等内容进行研究。</p>
+
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+        
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block home" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="/2020/01/01/kubebuilder-2/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -608,7 +710,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">4</span>
+          <span class="site-state-item-count">5</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
@@ -621,7 +723,7 @@
       <div class="site-state-item site-state-tags">
             <a href="/tags/">
           
-        <span class="site-state-item-count">4</span>
+        <span class="site-state-item-count">5</span>
         <span class="site-state-item-name">标签</span></a>
       </div>
   </nav>
