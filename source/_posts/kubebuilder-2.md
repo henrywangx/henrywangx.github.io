@@ -1,5 +1,5 @@
 ---
-title: kubebuilder-2
+title: kubebuilder-2:原理
 categories:
   - Cloud
 tags:
