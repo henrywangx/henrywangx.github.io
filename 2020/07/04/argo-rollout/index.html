@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 4.0.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+
+<script id="hexo-configurations">
+  var NexT = window.NexT || {};
+  var CONFIG = {
+    root: '/',
+    scheme: 'Gemini',
+    version: '7.5.0',
+    exturl: false,
+    sidebar: {"position":"left","display":"post","offset":12,"onmobile":false},
+    copycode: {"enable":false,"show_result":false,"style":null},
+    back2top: {"enable":true,"sidebar":false,"scrollpercent":false},
+    bookmark: {"enable":false,"color":"#222","save":"auto"},
+    fancybox: false,
+    mediumzoom: false,
+    lazyload: false,
+    pangu: false,
+    algolia: {
+      appID: '',
+      apiKey: '',
+      indexName: '',
+      hits: {"per_page":10},
+      labels: {"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}
+    },
+    localsearch: {"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},
+    path: '',
+    motion: {"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},
+    translation: {
+      copy_button: '复制',
+      copy_success: '复制成功',
+      copy_failure: '复制失败'
+    },
+    sidebarPadding: 40
+  };
+</script>
+
+  <meta name="description" content="渐进式的Deployment–Argo Rollout 导语：熟悉k8s的同学知道Deployment目前只支持RollingUpgrade和ReCreate两种策略。而对于运维的同学而言，实际生产环境中更多应该使用灰度发布和蓝绿部署，笔者本想尝试造轮子，实现一个加强版，正好网上搜索到Argo-Rollout和我想法一致，就不用重复造轮子了，本文就是体验一下Argo-Rollout。  简介Arg">
+<meta name="keywords" content="Kubernetes,Argo,Deployment">
+<meta property="og:type" content="article">
+<meta property="og:title" content="kubelet启动和syncLoop过程源码分析">
+<meta property="og:url" content="&#x2F;2020&#x2F;07&#x2F;04&#x2F;argo-rollout&#x2F;">
+<meta property="og:site_name" content="大雄的部落阁">
+<meta property="og:description" content="渐进式的Deployment–Argo Rollout 导语：熟悉k8s的同学知道Deployment目前只支持RollingUpgrade和ReCreate两种策略。而对于运维的同学而言，实际生产环境中更多应该使用灰度发布和蓝绿部署，笔者本想尝试造轮子，实现一个加强版，正好网上搜索到Argo-Rollout和我想法一致，就不用重复造轮子了，本文就是体验一下Argo-Rollout。  简介Arg">
+<meta property="og:locale" content="zh-CN">
+<meta property="og:image" content="&#x2F;2020&#x2F;07&#x2F;04&#x2F;argo-rollout&#x2F;init.jpg">
+<meta property="og:image" content="&#x2F;2020&#x2F;07&#x2F;04&#x2F;argo-rollout&#x2F;canary.jpg">
+<meta property="og:image" content="&#x2F;2020&#x2F;07&#x2F;04&#x2F;argo-rollout&#x2F;finished.jpg">
+<meta property="og:image" content="&#x2F;2020&#x2F;07&#x2F;04&#x2F;argo-rollout&#x2F;traffic-1.jpg">
+<meta property="og:updated_time" content="2020-07-05T09:38:39.000Z">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="&#x2F;2020&#x2F;07&#x2F;04&#x2F;argo-rollout&#x2F;init.jpg">
+
+<link rel="canonical" href="/2020/07/04/argo-rollout/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome: false,
+    isPost: true,
+    isPage: false,
+    isArchive: false
+  };
+</script>
+
+  <title>kubelet启动和syncLoop过程源码分析 | 大雄的部落阁</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-meta">
+
+    <div>
+      <a href="/" class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">大雄的部落阁</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+        <p class="site-subtitle">纸上得来终觉浅，绝知此事要躬行</p>
+  </div>
+
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+</div>
+
+
+<nav class="site-nav">
+  
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-fw fa-user"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+  </ul>
+
+</nav>
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+  <a href="https://github.com/henrywangx" class="github-corner" title="熊大：Follow me" aria-label="熊大：Follow me" rel="noopener" target="_blank"><svg width="80" height="80" viewBox="0 0 250 250" aria-hidden="true"><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content">
+            
+
+  <div class="posts-expand">
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block " lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="/2020/07/04/argo-rollout/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="雄哥good">
+      <meta itemprop="description" content="技术日新月异，碎片化的学习总不得安心，因此开此blog定期记录和总结所思和所得">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="大雄的部落阁">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          kubelet启动和syncLoop过程源码分析
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2020-07-04 17:00:00" itemprop="dateCreated datePublished" datetime="2020-07-04T17:00:00+08:00">2020-07-04</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2020-07-05 17:38:39" itemprop="dateModified" datetime="2020-07-05T17:38:39+08:00">2020-07-05</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Cloud/" itemprop="url" rel="index">
+                    <span itemprop="name">Cloud</span>
+                  </a>
+                </span>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h1 id="渐进式的Deployment–Argo-Rollout"><a href="#渐进式的Deployment–Argo-Rollout" class="headerlink" title="渐进式的Deployment–Argo Rollout"></a>渐进式的Deployment–Argo Rollout</h1><blockquote>
+<p>导语：熟悉k8s的同学知道Deployment目前只支持RollingUpgrade和ReCreate两种策略。而对于运维的同学而言，实际生产环境中更多应该使用灰度发布和蓝绿部署，笔者本想尝试造轮子，实现一个加强版，正好网上搜索到Argo-Rollout和我想法一致，就不用重复造轮子了，本文就是体验一下Argo-Rollout。</p>
+</blockquote>
+<h2 id="简介"><a href="#简介" class="headerlink" title="简介"></a>简介</h2><p><a href="https://argoproj.github.io/argo-rollouts/">Argo-Rollout</a>是一个Kubernetes Controller和对应一系列的CRD，提供更强大的Deployment能力。包括灰度发布、蓝绿部署、更新测试(experimentation)、渐进式交付(progressive delivery)等特性。</p>
+<p><strong>支持特性：</strong></p>
+<ul>
+<li>蓝绿部署</li>
+<li>灰度发布</li>
+<li>细粒的，带权重的流量调度（traffic shifting）</li>
+<li>自动rollback和promotion</li>
+<li>手动管理</li>
+<li>可定制的metric查询和kpi分析</li>
+<li>Ingress controller集成：nginx，alb</li>
+<li>Service Mesh集成：Istio，Linkerd，SMI</li>
+<li>Metric provider集成：Prometheus, Wavefront, Kayenta, Web, Kubernetes Jobs</li>
+</ul>
+<p><strong>原理：</strong></p>
+<p>Argo原理和Deployment差不多，只是加强rollout的策略和流量控制。当spec.template发送变化时，Argo-Rollout就会根据spec.strategy进行rollout，通常会产生一个新的ReplicaSet，逐步scale down之前的ReplicaSet的pod数量。</p>
+<h2 id="安装"><a href="#安装" class="headerlink" title="安装"></a>安装</h2><p><a href="https://argoproj.github.io/argo-rollouts/installation/#kubectl-plugin-installation">官方安装文档</a></p>
+<p>1.安装argo-rollouts的controller和crd</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">kubectl create namespace argo-rollouts</span><br><span class="line">kubectl apply -n argo-rollouts -f https://raw.githubusercontent.com/argoproj/argo-rollouts/stable/manifests/install.yaml</span><br></pre></td></tr></table></figure>
+
+<p>2.安装argo-rollouts的kubectl plugin</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">curl -LO https://github.com/argoproj/argo-rollouts/releases/latest/download/kubectl-argo-rollouts-linux-amd64</span><br><span class="line">chmod +x ./kubectl-argo-rollouts-linux-amd64</span><br><span class="line">mv ./kubectl-argo-rollouts-linux-amd64 /usr/<span class="built_in">local</span>/bin/kubectl-argo-rollouts</span><br></pre></td></tr></table></figure>
+
+<h2 id="使用"><a href="#使用" class="headerlink" title="使用"></a>使用</h2><p>灰度发布包含Replica Shifting和Traffic Shifting两个过程。</p>
+<h3 id="Replica-Shifting"><a href="#Replica-Shifting" class="headerlink" title="Replica Shifting"></a>Replica Shifting</h3><p>这里就直接拿官网的<a href="https://argoproj.github.io/argo-rollouts/getting-started/">例子</a>，来体验一下Replica Shifting。</p>
+<h4 id="1-部署一个Demo应用"><a href="#1-部署一个Demo应用" class="headerlink" title="1.部署一个Demo应用"></a>1.部署一个Demo应用</h4><p>首先创建一个Rollout的CR和访问该CR的Service:</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">kubectl apply -f https://raw.githubusercontent.com/argoproj/argo-rollouts/master/docs/getting-started/basic/rollout.yaml</span><br><span class="line">kubectl apply -f https://raw.githubusercontent.com/argoproj/argo-rollouts/master/docs/getting-started/basic/service.yaml</span><br></pre></td></tr></table></figure>
+
+<p>Rollout CR，可以看到除了<code>apiVersion</code>，<code>kind</code>以及<code>strategy</code>之外，其他和Deployment无异，实际上其源码基本上都是引用的Deployment的数据结构:</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">#cat rollout.yaml</span></span><br><span class="line"><span class="attr">apiVersion:</span> <span class="string">argoproj.io/v1alpha1</span></span><br><span class="line"><span class="attr">kind:</span> <span class="string">Rollout</span></span><br><span class="line"><span class="attr">metadata:</span></span><br><span class="line">  <span class="attr">name:</span> <span class="string">rollouts-demo</span></span><br><span class="line"><span class="attr">spec:</span></span><br><span class="line">  <span class="attr">replicas:</span> <span class="number">5</span></span><br><span class="line">  <span class="attr">strategy:</span></span><br><span class="line">    <span class="attr">canary:</span></span><br><span class="line">      <span class="attr">steps:</span></span><br><span class="line">      <span class="bullet">-</span> <span class="attr">setWeight:</span> <span class="number">20</span></span><br><span class="line">      <span class="bullet">-</span> <span class="attr">pause:</span> <span class="string">&#123;&#125;</span></span><br><span class="line">      <span class="bullet">-</span> <span class="attr">setWeight:</span> <span class="number">40</span></span><br><span class="line">      <span class="bullet">-</span> <span class="attr">pause:</span> <span class="string">&#123;duration:</span> <span class="number">10</span><span class="string">&#125;</span></span><br><span class="line">      <span class="bullet">-</span> <span class="attr">setWeight:</span> <span class="number">60</span></span><br><span class="line">      <span class="bullet">-</span> <span class="attr">pause:</span> <span class="string">&#123;duration:</span> <span class="number">10</span><span class="string">&#125;</span></span><br><span class="line">      <span class="bullet">-</span> <span class="attr">setWeight:</span> <span class="number">80</span></span><br><span class="line">      <span class="bullet">-</span> <span class="attr">pause:</span> <span class="string">&#123;duration:</span> <span class="number">10</span><span class="string">&#125;</span></span><br><span class="line">  <span class="attr">revisionHistoryLimit:</span> <span class="number">2</span></span><br><span class="line">  <span class="attr">selector:</span></span><br><span class="line">    <span class="attr">matchLabels:</span></span><br><span class="line">      <span class="attr">app:</span> <span class="string">rollouts-demo</span></span><br><span class="line">  <span class="attr">template:</span></span><br><span class="line">    <span class="attr">metadata:</span></span><br><span class="line">      <span class="attr">labels:</span></span><br><span class="line">        <span class="attr">app:</span> <span class="string">rollouts-demo</span></span><br><span class="line">    <span class="attr">spec:</span></span><br><span class="line">      <span class="attr">containers:</span></span><br><span class="line">      <span class="bullet">-</span> <span class="attr">name:</span> <span class="string">rollouts-demo</span></span><br><span class="line">        <span class="attr">image:</span> <span class="string">argoproj/rollouts-demo:blue</span></span><br><span class="line">        <span class="attr">ports:</span></span><br><span class="line">        <span class="bullet">-</span> <span class="attr">name:</span> <span class="string">http</span></span><br><span class="line">          <span class="attr">containerPort:</span> <span class="number">8080</span></span><br><span class="line">          <span class="attr">protocol:</span> <span class="string">TCP</span></span><br><span class="line">        <span class="attr">resources:</span></span><br><span class="line">          <span class="attr">requests:</span></span><br><span class="line">            <span class="attr">memory:</span> <span class="string">32Mi</span></span><br><span class="line">            <span class="attr">cpu:</span> <span class="string">5m</span></span><br></pre></td></tr></table></figure>
+
+<p>暴露的service：</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">apiVersion:</span> <span class="string">v1</span></span><br><span class="line"><span class="attr">kind:</span> <span class="string">Service</span></span><br><span class="line"><span class="attr">metadata:</span></span><br><span class="line">  <span class="attr">name:</span> <span class="string">rollouts-demo</span></span><br><span class="line"><span class="attr">spec:</span></span><br><span class="line">  <span class="attr">ports:</span></span><br><span class="line">  <span class="bullet">-</span> <span class="attr">port:</span> <span class="number">80</span></span><br><span class="line">    <span class="attr">targetPort:</span> <span class="string">http</span></span><br><span class="line">    <span class="attr">protocol:</span> <span class="string">TCP</span></span><br><span class="line">    <span class="attr">name:</span> <span class="string">http</span></span><br><span class="line">  <span class="attr">selector:</span></span><br><span class="line">    <span class="attr">app:</span> <span class="string">rollouts-demo</span></span><br></pre></td></tr></table></figure>
+
+<p>可以使用Argo-Rollout提供的plugin查看其状态，感觉还是很香：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">[root@xiowang-dev ~/yaml]<span class="comment"># kubectl argo rollouts get </span></span><br><span class="line">rollout rollouts-demo</span><br></pre></td></tr></table></figure>
+
+<p><img src="/2020/07/04/argo-rollout/init.jpg" alt="部署Rollout"></p>
+<h4 id="2-更新spec触发rollout"><a href="#2-更新spec触发rollout" class="headerlink" title="2.更新spec触发rollout"></a>2.更新spec触发rollout</h4><p>然后通过修改spec中的镜像，触发一次rollout:</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">kubectl argo rollouts <span class="built_in">set</span> image rollouts-demo rollouts-demo=argoproj/rollouts-demo:yellow</span><br></pre></td></tr></table></figure>
+
+<p>预期Rollout会创建一个新的ReplicaSet，并且逐步扩容新的ReplicaSet和缩容旧的ReplicaSet，用plugin查看一下:</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># kubectl argo rollouts get rollout rollouts-demo --watch</span></span><br></pre></td></tr></table></figure>
+
+<p><img src="/2020/07/04/argo-rollout/canary.jpg" alt="Canary状态"></p>
+<p>可以看到Rollout新创建了ReplicaSet <strong>rollouts-demo-789746c88d</strong>，并且将老ReplicaSet的Pod转移到新的ReplicaSet，新老ReplicaSet的pod比例为: 1:4，并且状态为<strong>Paused</strong>，没有继续升级新pod，为什么呢？</p>
+<p>主要原因就在这个spec.strategy，通过这个strategy我们可以看到其为升级设定了steps，由于是个列表，因此其会按照顺序执行。这里第一步就是<strong>setWeight：20</strong>，意味着需要将20%的pod更新为新版本；第二步动作为<strong>pause: {}</strong>，意味着将永久暂停，需要人为通过plugin使其继续:</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">strategy:</span></span><br><span class="line">  <span class="attr">canary:</span></span><br><span class="line">    <span class="attr">steps:</span></span><br><span class="line">    <span class="bullet">-</span> <span class="attr">setWeight:</span> <span class="number">20</span></span><br><span class="line">    <span class="bullet">-</span> <span class="attr">pause:</span> <span class="string">&#123;&#125;</span></span><br><span class="line">    <span class="bullet">-</span> <span class="attr">setWeight:</span> <span class="number">40</span></span><br><span class="line">    <span class="bullet">-</span> <span class="attr">pause:</span> <span class="string">&#123;duration:</span> <span class="number">10</span><span class="string">&#125;</span> <span class="comment">#停顿10s</span></span><br><span class="line">    <span class="bullet">-</span> <span class="attr">setWeight:</span> <span class="number">60</span></span><br><span class="line">    <span class="bullet">-</span> <span class="attr">pause:</span> <span class="string">&#123;duration:</span> <span class="number">10</span><span class="string">&#125;</span></span><br><span class="line">    <span class="bullet">-</span> <span class="attr">setWeight:</span> <span class="number">80</span></span><br><span class="line">    <span class="bullet">-</span> <span class="attr">pause:</span> <span class="string">&#123;duration:</span> <span class="number">10</span><span class="string">&#125;</span></span><br></pre></td></tr></table></figure>
+
+<p>我们通过promote命令使其进行下一步：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># kubectl argo rollouts promote rollouts-demo</span></span><br></pre></td></tr></table></figure>
+
+<p>让我们再查看结果，所有pod都为新的ReplicaSet的pod：</p>
+<p><img src="/2020/07/04/argo-rollout/finished.jpg" alt="Finished"></p>
+<h3 id="Traffic-Shifting"><a href="#Traffic-Shifting" class="headerlink" title="Traffic Shifting"></a>Traffic Shifting</h3><p>上面例子演示了Argo-Rollout如何控制Replica Shifting，而正常的灰度过程，应该包含Replica Shifting和Traffic Shifting两部分。</p>
+<p>目前Argo-Rollout主要集成了<strong>Ingress</strong>和<strong>ServiceMesh</strong>两种流量控制方法，我的测试环境中目前只部署了Nginx-Controller那就使用Ingress做演示。</p>
+<h4 id="1-部署物料"><a href="#1-部署物料" class="headerlink" title="1.部署物料"></a>1.部署物料</h4><p>首先删除之前的例子:</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">kubectl delete -f https://raw.githubusercontent.com/argoproj/argo-rollouts/master/docs/getting-started/basic/rollout.yaml</span><br><span class="line">kubectl delete -f https://raw.githubusercontent.com/argoproj/argo-rollouts/master/docs/getting-started/basic/service.yaml</span><br></pre></td></tr></table></figure>
+
+<p>再部署官网的例子:</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">kubectl apply -f https://raw.githubusercontent.com/argoproj/argo-rollouts/master/docs/getting-started/nginx/rollout.yaml</span><br><span class="line">kubectl apply -f https://raw.githubusercontent.com/argoproj/argo-rollouts/master/docs/getting-started/nginx/services.yaml</span><br><span class="line">kubectl apply -f https://raw.githubusercontent.com/argoproj/argo-rollouts/master/docs/getting-started/nginx/ingress.yaml</span><br></pre></td></tr></table></figure>
+
+<p>上面的文件会部署1个rollout，两个service和一个ingress:</p>
+<p>Rollout里分别用<code>canaryService</code>和<code>stableService</code>分别定义了该应用灰度的Service Name(rollouts-demo-canary)和当前版本的Service Name(rollouts-demo-stable):</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">apiVersion:</span> <span class="string">argoproj.io/v1alpha1</span></span><br><span class="line"><span class="attr">kind:</span> <span class="string">Rollout</span></span><br><span class="line"><span class="attr">metadata:</span></span><br><span class="line">  <span class="attr">name:</span> <span class="string">rollouts-demo</span></span><br><span class="line"><span class="attr">spec:</span></span><br><span class="line">  <span class="attr">replicas:</span> <span class="number">1</span></span><br><span class="line">  <span class="attr">strategy:</span></span><br><span class="line">    <span class="attr">canary:</span></span><br><span class="line">      <span class="attr">canaryService:</span> <span class="string">rollouts-demo-canary</span></span><br><span class="line">      <span class="attr">stableService:</span> <span class="string">rollouts-demo-stable</span></span><br><span class="line">      <span class="attr">trafficRouting:</span></span><br><span class="line">        <span class="attr">nginx:</span></span><br><span class="line">          <span class="attr">stableIngress:</span> <span class="string">rollouts-demo-stable</span></span><br><span class="line">      <span class="attr">steps:</span></span><br><span class="line">      <span class="bullet">-</span> <span class="attr">setWeight:</span> <span class="number">5</span></span><br><span class="line">      <span class="bullet">-</span> <span class="attr">pause:</span> <span class="string">&#123;&#125;</span></span><br><span class="line"><span class="string">...</span></span><br></pre></td></tr></table></figure>
+
+<p>Service rollouts-demo-canary 和 rollouts-demo-stable，二者内容一样。selector中暂时没有填上pod-template-hash，Argo-Rollout Controller会根据实际的ReplicaSet hash来修改该值:</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">apiVersion:</span> <span class="string">v1</span></span><br><span class="line"><span class="attr">kind:</span> <span class="string">Service</span></span><br><span class="line"><span class="attr">metadata:</span></span><br><span class="line">  <span class="attr">name:</span> <span class="string">rollouts-demo-canary</span></span><br><span class="line"><span class="attr">spec:</span></span><br><span class="line">  <span class="attr">ports:</span></span><br><span class="line">  <span class="bullet">-</span> <span class="attr">port:</span> <span class="number">80</span></span><br><span class="line">    <span class="attr">targetPort:</span> <span class="string">http</span></span><br><span class="line">    <span class="attr">protocol:</span> <span class="string">TCP</span></span><br><span class="line">    <span class="attr">name:</span> <span class="string">http</span></span><br><span class="line">  <span class="attr">selector:</span></span><br><span class="line">    <span class="attr">app:</span> <span class="string">rollouts-demo</span></span><br><span class="line">    <span class="comment"># This selector will be updated with the pod-template-hash of the canary ReplicaSet. e.g.:</span></span><br><span class="line">    <span class="comment"># rollouts-pod-template-hash: 7bf84f9696</span></span><br><span class="line"></span><br><span class="line"><span class="meta">---</span></span><br><span class="line"><span class="attr">apiVersion:</span> <span class="string">v1</span></span><br><span class="line"><span class="attr">kind:</span> <span class="string">Service</span></span><br><span class="line"><span class="attr">metadata:</span></span><br><span class="line">  <span class="attr">name:</span> <span class="string">rollouts-demo-stable</span></span><br><span class="line"><span class="attr">spec:</span></span><br><span class="line">  <span class="attr">ports:</span></span><br><span class="line">  <span class="bullet">-</span> <span class="attr">port:</span> <span class="number">80</span></span><br><span class="line">    <span class="attr">targetPort:</span> <span class="string">http</span></span><br><span class="line">    <span class="attr">protocol:</span> <span class="string">TCP</span></span><br><span class="line">    <span class="attr">name:</span> <span class="string">http</span></span><br><span class="line">  <span class="attr">selector:</span></span><br><span class="line">    <span class="attr">app:</span> <span class="string">rollouts-demo</span></span><br><span class="line">    <span class="comment"># This selector will be updated with the pod-template-hash of the stable ReplicaSet. e.g.:</span></span><br><span class="line">    <span class="comment"># rollouts-pod-template-hash: 789746c88d</span></span><br></pre></td></tr></table></figure>
+
+<p><code>Ingress</code>则定义了规则，nginx将rollouts-demo.local域名的请求转发到当前版本的<code>Service</code>(rollouts-demo-stable):</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">apiVersion:</span> <span class="string">networking.k8s.io/v1beta1</span></span><br><span class="line"><span class="attr">kind:</span> <span class="string">Ingress</span></span><br><span class="line"><span class="attr">metadata:</span></span><br><span class="line">  <span class="attr">name:</span> <span class="string">rollouts-demo-stable</span></span><br><span class="line">  <span class="attr">annotations:</span></span><br><span class="line">    <span class="attr">kubernetes.io/ingress.class:</span> <span class="string">nginx</span></span><br><span class="line"><span class="attr">spec:</span></span><br><span class="line">  <span class="attr">rules:</span></span><br><span class="line">  <span class="bullet">-</span> <span class="attr">host:</span> <span class="string">rollouts-demo.local</span></span><br><span class="line">    <span class="attr">http:</span></span><br><span class="line">      <span class="attr">paths:</span></span><br><span class="line">      <span class="bullet">-</span> <span class="attr">path:</span> <span class="string">/</span></span><br><span class="line">        <span class="attr">backend:</span></span><br><span class="line">          <span class="comment"># Reference to a Service name, also specified in the Rollout spec.strategy.canary.stableService field</span></span><br><span class="line">          <span class="attr">serviceName:</span> <span class="string">rollouts-demo-stable</span></span><br><span class="line">          <span class="attr">servicePort:</span> <span class="number">80</span></span><br></pre></td></tr></table></figure>
+
+<p>Rollout Controller会根据<code>ingress</code> rollouts-demo-stable内容，自动创建一个<code>ingress</code>用了灰度的流量，名字为<ROLLOUT-NAME>-<INGRESS-NAME>-canary，所以这里多了一个<code>ingress</code> rollouts-demo-rollouts-demo-stable-canary，将流量导向Canary <code>Service</code>(rollouts-demo-canary):</INGRESS-NAME></ROLLOUT-NAME></p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">apiVersion:</span> <span class="string">extensions/v1beta1</span></span><br><span class="line"><span class="attr">kind:</span> <span class="string">Ingress</span></span><br><span class="line"><span class="attr">metadata:</span></span><br><span class="line">  <span class="attr">generation:</span> <span class="number">1</span></span><br><span class="line">  <span class="attr">name:</span> <span class="string">rollouts-demo-rollouts-demo-stable-canary</span></span><br><span class="line">  <span class="attr">namespace:</span> <span class="string">default</span></span><br><span class="line">  <span class="attr">ownerReferences:</span></span><br><span class="line">  <span class="bullet">-</span> <span class="attr">apiVersion:</span> <span class="string">argoproj.io/v1alpha1</span></span><br><span class="line">    <span class="attr">blockOwnerDeletion:</span> <span class="literal">true</span></span><br><span class="line">    <span class="attr">controller:</span> <span class="literal">true</span></span><br><span class="line">    <span class="attr">kind:</span> <span class="string">Rollout</span></span><br><span class="line">    <span class="attr">name:</span> <span class="string">rollouts-demo</span></span><br><span class="line">    <span class="attr">uid:</span> <span class="string">2d5b728b-2f71-4bf2-8283-323acf8ef573</span></span><br><span class="line"><span class="attr">spec:</span></span><br><span class="line">  <span class="attr">rules:</span></span><br><span class="line">  <span class="bullet">-</span> <span class="attr">host:</span> <span class="string">rollouts-demo.local</span></span><br><span class="line">    <span class="attr">http:</span></span><br><span class="line">      <span class="attr">paths:</span></span><br><span class="line">      <span class="bullet">-</span> <span class="attr">backend:</span></span><br><span class="line">          <span class="attr">serviceName:</span> <span class="string">rollouts-demo-canary</span></span><br><span class="line">          <span class="attr">servicePort:</span> <span class="number">80</span></span><br><span class="line">        <span class="attr">path:</span> <span class="string">/</span></span><br></pre></td></tr></table></figure>
+
+<h4 id="2-触发更新"><a href="#2-触发更新" class="headerlink" title="2.触发更新"></a>2.触发更新</h4><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">kubectl argo rollouts <span class="built_in">set</span> image rollouts-demo rollouts-demo=argoproj/rollouts-demo:yellow</span><br><span class="line">kubectl argo rollouts get rollout rollouts-demo</span><br></pre></td></tr></table></figure>
+
+<p>可以看到Rollout状态中<strong>SetWeight</strong>为5了</p>
+<p><img src="/2020/07/04/argo-rollout/traffic-1.jpg" alt="traffic"></p>
+<p>同时查看<code>Ingress</code>，多了<code>nginx.ingress.kubernetes.io/canary</code>和<code>nginx.ingress.kubernetes.io/canary-weight</code> 两条annotation:</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">#当前版本Ingress</span></span><br><span class="line"></span><br><span class="line"><span class="comment">#灰度Ingress</span></span><br><span class="line">apiVersion: extensions/v1beta1</span><br><span class="line">kind: Ingress</span><br><span class="line">metadata:</span><br><span class="line">  annotations:</span><br><span class="line">    kubernetes.io/ingress.class: nginx</span><br><span class="line">    nginx.ingress.kubernetes.io/canary: <span class="string">"true"</span></span><br><span class="line">    nginx.ingress.kubernetes.io/canary-weight: <span class="string">"5"</span></span><br><span class="line">  creationTimestamp: <span class="string">"2020-07-05T06:31:54Z"</span></span><br><span class="line">  generation: 1</span><br><span class="line">  name: rollouts-demo-rollouts-demo-stable-canary</span><br></pre></td></tr></table></figure>
+
+<p>细心的你也能看出上面结果显示有一个小问题问题<strong>ActualWeight：50</strong>，这里应该为5或者95，所以顺便提了个<a href="https://github.com/argoproj/argo-rollouts/issues/568">issue</a>给社区。</p>
+<h2 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h2><p>Argo-Rollout提供更加强大的Deployment，包含比较适合运维的灰度发布和蓝绿发布功能。本文也是简单体验了一下其灰度发布功能。</p>
+<p>本文未提及的功能包括：</p>
+<ol>
+<li><a href="https://argoproj.github.io/argo-rollouts/features/experiment/">Experiments</a>，可以加入到Steps中，用于检验每个Step是否符合用户预期；</li>
+<li><a href="https://argoproj.github.io/argo-rollouts/features/analysis/">Analysis</a>，用于统计Rollout中的各种metrics，包括每个Step花费时间等。</li>
+</ol>
+<p>另外想到一个需求Argo-Rollout暂时未支持:</p>
+<blockquote>
+<p>对于traffic-shifting，在做灰度的时候应该是让固定的一些用户或者url流量到新版本，目前Argo-Rollout并不支持。</p>
+</blockquote>
+<p>当然上面这个问题可以通过添加一个Experiment，由该Experiment去修改Ingress或者SMI中的内容来实现。</p>
+<p>除去功能之外，从源码学习的角度来说，Argo-Rollout仍然是一个好项目，结构清晰，适合学习写Controller和Plugin。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Kubernetes/" rel="tag"># Kubernetes</a>
+              <a href="/tags/Argo/" rel="tag"># Argo</a>
+              <a href="/tags/Deployment/" rel="tag"># Deployment</a>
+          </div>
+
+        
+
+          <div class="post-nav">
+            <div class="post-nav-next post-nav-item">
+                <a href="/2020/03/29/kubelet-1/" rel="next" title="kubelet启动和syncLoop过程源码分析">
+                  <i class="fa fa-chevron-left"></i> kubelet启动和syncLoop过程源码分析
+                </a>
+            </div>
+
+            <span class="post-nav-divider"></span>
+
+            <div class="post-nav-prev post-nav-item">
+            </div>
+          </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+  </div>
+
+
+          </div>
+          
+    <div class="comments" id="gitalk-container"></div>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#渐进式的Deployment–Argo-Rollout"><span class="nav-number">1.</span> <span class="nav-text">渐进式的Deployment–Argo Rollout</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#简介"><span class="nav-number">1.1.</span> <span class="nav-text">简介</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#安装"><span class="nav-number">1.2.</span> <span class="nav-text">安装</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#使用"><span class="nav-number">1.3.</span> <span class="nav-text">使用</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#Replica-Shifting"><span class="nav-number">1.3.1.</span> <span class="nav-text">Replica Shifting</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#1-部署一个Demo应用"><span class="nav-number">1.3.1.1.</span> <span class="nav-text">1.部署一个Demo应用</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#2-更新spec触发rollout"><span class="nav-number">1.3.1.2.</span> <span class="nav-text">2.更新spec触发rollout</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Traffic-Shifting"><span class="nav-number">1.3.2.</span> <span class="nav-text">Traffic Shifting</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#1-部署物料"><span class="nav-number">1.3.2.1.</span> <span class="nav-text">1.部署物料</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#2-触发更新"><span class="nav-number">1.3.2.2.</span> <span class="nav-text">2.触发更新</span></a></li></ol></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#总结"><span class="nav-number">1.4.</span> <span class="nav-text">总结</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <img class="site-author-image" itemprop="image" alt="雄哥good"
+    src="/images/avatar.gif">
+  <p class="site-author-name" itemprop="name">雄哥good</p>
+  <div class="site-description" itemprop="description">技术日新月异，碎片化的学习总不得安心，因此开此blog定期记录和总结所思和所得</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">6</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">2</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/henrywangx" title="GitHub &amp;rarr; https:&#x2F;&#x2F;github.com&#x2F;henrywangx" rel="noopener" target="_blank"><i class="fa fa-fw fa-github"></i>GitHub</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="mailto:henrywangx@163.com" title="E-Mail &amp;rarr; mailto:henrywangx@163.com" rel="noopener" target="_blank"><i class="fa fa-fw fa-envelope"></i>E-Mail</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://www.jianshu.com/u/4d0fe9f124a2" title="简书 &amp;rarr; https:&#x2F;&#x2F;www.jianshu.com&#x2F;u&#x2F;4d0fe9f124a2" rel="noopener" target="_blank"><i class="fa fa-fw fa-heartbeat"></i>简书</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2020</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">雄哥good</span>
+</div>
+
+        
+
+
+
+
+
+
+
+
+
+
+
+
+        
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+<script src="/js/utils.js"></script><script src="/js/motion.js"></script>
+<script src="/js/schemes/pisces.js"></script>
+<script src="/js/next-boot.js"></script>
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+<link rel="stylesheet" href="//cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.min.css">
+
+<script>
+  NexT.utils.getScript('//cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.min.js', () => {
+    var gitalk = new Gitalk({
+      clientID: '78bad023bda609d56092',
+      clientSecret: '8d3af962b6f70d336694a92f4d15bc3b6f43dcdb',
+      repo: 'henrywangx.github.io',
+      owner: 'henrywangx',
+      admin: ['henrywangx'],
+      id: 'c4234a68a70a3f71d6cce7324562bd7c',
+        language: '',
+      distractionFreeMode: 'true'
+    });
+    gitalk.render('gitalk-container');
+  }, window.Gitalk);
+</script>
+
+</body>
+</html>
