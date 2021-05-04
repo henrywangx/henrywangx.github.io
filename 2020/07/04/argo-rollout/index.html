@@ -53,7 +53,7 @@
   <meta name="description" content="渐进式的Deployment–Argo Rollout 导语：熟悉k8s的同学知道Deployment目前只支持RollingUpgrade和ReCreate两种策略。而对于运维的同学而言，实际生产环境中更多应该使用灰度发布和蓝绿部署，笔者本想尝试造轮子，实现一个加强版，正好网上搜索到Argo-Rollout和我想法一致，就不用重复造轮子了，本文就是体验一下Argo-Rollout。  简介Arg">
 <meta name="keywords" content="Kubernetes,Argo,Deployment">
 <meta property="og:type" content="article">
-<meta property="og:title" content="kubelet启动和syncLoop过程源码分析">
+<meta property="og:title" content="渐进式的Deployment-Argo Rollout">
 <meta property="og:url" content="&#x2F;2020&#x2F;07&#x2F;04&#x2F;argo-rollout&#x2F;">
 <meta property="og:site_name" content="大雄的部落阁">
 <meta property="og:description" content="渐进式的Deployment–Argo Rollout 导语：熟悉k8s的同学知道Deployment目前只支持RollingUpgrade和ReCreate两种策略。而对于运维的同学而言，实际生产环境中更多应该使用灰度发布和蓝绿部署，笔者本想尝试造轮子，实现一个加强版，正好网上搜索到Argo-Rollout和我想法一致，就不用重复造轮子了，本文就是体验一下Argo-Rollout。  简介Arg">
@@ -62,7 +62,7 @@
 <meta property="og:image" content="&#x2F;2020&#x2F;07&#x2F;04&#x2F;argo-rollout&#x2F;canary.jpg">
 <meta property="og:image" content="&#x2F;2020&#x2F;07&#x2F;04&#x2F;argo-rollout&#x2F;finished.jpg">
 <meta property="og:image" content="&#x2F;2020&#x2F;07&#x2F;04&#x2F;argo-rollout&#x2F;traffic-1.jpg">
-<meta property="og:updated_time" content="2020-07-05T09:46:16.000Z">
+<meta property="og:updated_time" content="2021-05-04T15:23:55.000Z">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:image" content="&#x2F;2020&#x2F;07&#x2F;04&#x2F;argo-rollout&#x2F;init.jpg">
 
@@ -80,7 +80,7 @@
   };
 </script>
 
-  <title>kubelet启动和syncLoop过程源码分析 | 大雄的部落阁</title>
+  <title>渐进式的Deployment-Argo Rollout | 大雄的部落阁</title>
   
 
 
@@ -210,7 +210,7 @@
     </span>
       <header class="post-header">
         <h1 class="post-title" itemprop="name headline">
-          kubelet启动和syncLoop过程源码分析
+          渐进式的Deployment-Argo Rollout
         </h1>
 
         <div class="post-meta">
@@ -227,7 +227,7 @@
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2020-07-05 17:46:16" itemprop="dateModified" datetime="2020-07-05T17:46:16+08:00">2020-07-05</time>
+                <time title="修改时间：2021-05-04 23:23:55" itemprop="dateModified" datetime="2021-05-04T23:23:55+08:00">2021-05-04</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -482,7 +482,7 @@
 <div class="copyright">
   
   &copy; 
-  <span itemprop="copyrightYear">2020</span>
+  <span itemprop="copyrightYear">2021</span>
   <span class="with-love">
     <i class="fa fa-user"></i>
   </span>
