@@ -204,7 +204,7 @@
       <header class="post-header">
         <h1 class="post-title" itemprop="name headline">
           
-            <a href="/2021/05/20/karmada/" class="post-title-link" itemprop="url">k8s多集群方案karmada解析</a>
+            <a href="/2021/05/20/karmada/" class="post-title-link" itemprop="url">k8s多集群分发方案karmada解析</a>
         </h1>
 
         <div class="post-meta">
@@ -221,7 +221,7 @@
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2021-05-23 01:00:57" itemprop="dateModified" datetime="2021-05-23T01:00:57+08:00">2021-05-23</time>
+                <time title="修改时间：2021-05-23 01:06:42" itemprop="dateModified" datetime="2021-05-23T01:06:42+08:00">2021-05-23</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -257,7 +257,7 @@
 <li><strong>多集群对象分发</strong>。解决k8s中的对象，尤其是workload在多集群间分发，例如红帽领衔的<a href="https://github.com/kubernetes-sigs/kubefed">kubefed v2</a>，以及本文即将解析的<a href="https://github.com/karmada-io/karmada">karmada</a>。</li>
 </ol>
 <h1 id="核心概念"><a href="#核心概念" class="headerlink" title="核心概念"></a>核心概念</h1><p>Karmada是基于<a href="https://github.com/kubernetes-sigs/kubefed">kubefed v2</a>进行修改的一个项目，因此里面很多概念都是取至kubefed v2<br>。</p>
-<p>具体对象关系由下图表示：<br><img src="/2021/05/20/karmada/relation.png" alt="关系图"></p>
+<p><img src="/2021/05/20/karmada/relation.png" alt="关系图"></p>
 <ol>
 <li><strong>Resource Template</strong>。和我们平时使用k8s的对象例如Deployment，Secret，Configmap没有不同，但是需要我们在global集群进行创建和修改；</li>
 <li><strong>Propagation Policy</strong>。定义Resource Template需要被调度到那些集群，此概念和kubefed v2相同；</li>
