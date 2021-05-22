@@ -62,7 +62,7 @@
 <meta property="og:image" content="&#x2F;2021&#x2F;05&#x2F;20&#x2F;karmada&#x2F;propagation.jpg">
 <meta property="og:image" content="&#x2F;2021&#x2F;05&#x2F;20&#x2F;karmada&#x2F;override.jpg">
 <meta property="og:image" content="&#x2F;2021&#x2F;05&#x2F;20&#x2F;karmada&#x2F;dataflow.jpg">
-<meta property="og:updated_time" content="2021-05-22T16:52:28.000Z">
+<meta property="og:updated_time" content="2021-05-22T17:00:57.000Z">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:image" content="&#x2F;2021&#x2F;05&#x2F;20&#x2F;karmada&#x2F;relation.png">
 
@@ -227,7 +227,7 @@
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2021-05-23 00:52:28" itemprop="dateModified" datetime="2021-05-23T00:52:28+08:00">2021-05-23</time>
+                <time title="修改时间：2021-05-23 01:00:57" itemprop="dateModified" datetime="2021-05-23T01:00:57+08:00">2021-05-23</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -269,10 +269,10 @@
 <li><strong>Propagation Policy</strong>。定义Resource Template需要被调度到那些集群，此概念和kubefed v2相同；</li>
 <li><strong>Resource Binding</strong>。即Resource Template根据Propagation Policy调度之后的结果，保存在ResourceBinding中；</li>
 <li><strong>Override Policy</strong>。由于我们可能需要在不同集群里面部署不同的版本，或者副本数，我们可以通过Override Policy对Resource Binding中的结果进行修改；</li>
-<li><strong>Work</strong>。经过Override Policy的渲染，Karmada会产生Work对象，而Work对象所处的namespace跟调度的cluster对应，同时work中包含最终的对象的Spec和Status。对应的Execution Controller和Agent会不断Reconcile Work对象，即在子集群中创建和更新Work中的workload，并更新globa集群中Work的status。</li>
+<li><strong>Work</strong>。经过Override Policy的渲染，Karmada会产生Work对象，而Work对象所处的namespace跟调度的cluster一一对应，同时work中包含最终的对象的Spec和Status。对应的Execution Controller和Agent会不断Reconcile Work对象，即在子集群中创建和更新Work中的workload，并更新globa集群中Work的status。</li>
 </ol>
 <p>接下来我们会通过官方的demo来体验一下使用。</p>
-<h1 id="Demo"><a href="#Demo" class="headerlink" title="Demo"></a>Demo</h1><p><strong>PropagationPolicy</strong>和<strong>OverridePolicy</strong>都是从kubefed v2继承的概念：</p>
+<h1 id="Demo"><a href="#Demo" class="headerlink" title="Demo"></a>Demo</h1><p>我们主要关心对象在子集群间的分发，在karmada中主要由<strong>PropagationPolicy</strong>和<strong>OverridePolicy</strong>决定。这俩概念都是继承至kubefed v2：</p>
 <ol>
 <li><strong>PropagationPolicy</strong>用于定义对象分发的策略；</li>
 <li><strong>OverridePolicy</strong>用于按需修改不同集群内对象的spec；</li>
