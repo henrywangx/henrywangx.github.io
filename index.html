@@ -190,6 +190,209 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block home" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="/2021/05/20/karmada/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="雄哥good">
+      <meta itemprop="description" content="技术日新月异，碎片化的学习总不得安心，因此开此blog定期记录和总结所思和所得">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="大雄的部落阁">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          
+            <a href="/2021/05/20/karmada/" class="post-title-link" itemprop="url">k8s多集群方案karmada解析</a>
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2021-05-20 21:20:58" itemprop="dateCreated datePublished" datetime="2021-05-20T21:20:58+08:00">2021-05-20</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2021-05-23 00:52:28" itemprop="dateModified" datetime="2021-05-23T00:52:28+08:00">2021-05-23</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Cloud/" itemprop="url" rel="index">
+                    <span itemprop="name">Cloud</span>
+                  </a>
+                </span>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <blockquote>
+<p>导读：kubernetes已经是容器编排的业界标准，各个云厂商都提供了相关的集群托管服务，同时不少公司也存在自建集群。如何将应用发布到不同k8s集群，对跨多集群或者混合云的应用进行管理则是k8s中待解决的问题。本文会分析华为云开源的多集群解决方案-karmada。</p>
+</blockquote>
+<h1 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h1><p><a href="https://kubernetes.io/docs/setup/best-practices/cluster-large/">k8s官方宣称</a>支持最大150000个pods，5000个node。但是现实生产环境中业务时常有超过该规模的述求，比如说大型电商如淘宝，拼多多，又比如AI和大数据处理的workflow。同时出于合作和业务述求，一家公司还有可能将业务部署到不同的云厂商，或者自建机房和公有云配合使用。因此k8s多集群方案也是云原生领域的一个热点。</p>
+<p>目前主要的多集群问题有：</p>
+<ol>
+<li><strong>集群运维</strong>。包括集群的加入，删除，集群内机器的运维，k8s社区有<a href="https://cluster-api.sigs.k8s.io/">ClusterAPI</a>项目屏蔽底层云厂商，以统一方式管理多集群。同时蚂蚁金服之前也有通过k8s on k8s的方案去管理node节点上的系统组件；</li>
+<li><strong>多集群网络管理</strong>。解决集群间网络的连通性，例如<a href="https://github.com/GoogleCloudPlatform/k8s-multicluster-ingress">multicluster-ingress</a>解决多集群的ingress，以及istio，cilium等网络组件实现的multi cluster mesh解决跨集群的mesh网络管理。</li>
+<li><strong>多集群对象分发</strong>。解决k8s中的对象，尤其是workload在多集群间分发，例如红帽领衔的<a href="https://github.com/kubernetes-sigs/kubefed">kubefed v2</a>，以及本文即将解析的<a href="https://github.com/karmada-io/karmada">karmada</a>。</li>
+</ol>
+<h1 id="核心概念"><a href="#核心概念" class="headerlink" title="核心概念"></a>核心概念</h1><p>Karmada是基于<a href="https://github.com/kubernetes-sigs/kubefed">kubefed v2</a>进行修改的一个项目，因此里面很多概念都是取至kubefed v2<br>。</p>
+<p>具体对象关系由下图表示：<br><img src="/2021/05/20/karmada/relation.png" alt="关系图"></p>
+<ol>
+<li><strong>Resource Template</strong>。和我们平时使用k8s的对象例如Deployment，Secret，Configmap没有不同，但是需要我们在global集群进行创建和修改；</li>
+<li><strong>Propagation Policy</strong>。定义Resource Template需要被调度到那些集群，此概念和kubefed v2相同；</li>
+<li><strong>Resource Binding</strong>。即Resource Template根据Propagation Policy调度之后的结果，保存在ResourceBinding中；</li>
+<li><strong>Override Policy</strong>。由于我们可能需要在不同集群里面部署不同的版本，或者副本数，我们可以通过Override Policy对Resource Binding中的结果进行修改；</li>
+<li><strong>Work</strong>。经过Override Policy的渲染，Karmada会产生Work对象，而Work对象所处的namespace跟调度的cluster对应，同时work中包含最终的对象的Spec和Status。对应的Execution Controller和Agent会不断Reconcile Work对象，即在子集群中创建和更新Work中的workload，并更新globa集群中Work的status。</li>
+</ol>
+<p>接下来我们会通过官方的demo来体验一下使用。</p>
+<h1 id="Demo"><a href="#Demo" class="headerlink" title="Demo"></a>Demo</h1><p><strong>PropagationPolicy</strong>和<strong>OverridePolicy</strong>都是从kubefed v2继承的概念：</p>
+<ol>
+<li><strong>PropagationPolicy</strong>用于定义对象分发的策略；</li>
+<li><strong>OverridePolicy</strong>用于按需修改不同集群内对象的spec；</li>
+</ol>
+<p>这里直接用官方样例对Karmada的<strong>PropagationPolicy</strong>和<strong>OverridePolicy</strong>进行介绍。</p>
+<h2 id="PropagationPolicy"><a href="#PropagationPolicy" class="headerlink" title="PropagationPolicy"></a>PropagationPolicy</h2><p>首先我们在global集群中部署一个nginx的应用<code>Deployment</code>：</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">apiVersion:</span> <span class="string">apps/v1</span></span><br><span class="line"><span class="attr">kind:</span> <span class="string">Deployment</span></span><br><span class="line"><span class="attr">metadata:</span></span><br><span class="line">  <span class="attr">name:</span> <span class="string">nginx</span></span><br><span class="line">  <span class="attr">labels:</span></span><br><span class="line">    <span class="attr">app:</span> <span class="string">nginx</span></span><br><span class="line"><span class="attr">spec:</span></span><br><span class="line">  <span class="attr">replicas:</span> <span class="number">1</span></span><br><span class="line">  <span class="attr">selector:</span></span><br><span class="line">    <span class="attr">matchLabels:</span></span><br><span class="line">      <span class="attr">app:</span> <span class="string">nginx</span></span><br><span class="line">  <span class="attr">template:</span></span><br><span class="line">    <span class="attr">metadata:</span></span><br><span class="line">      <span class="attr">labels:</span></span><br><span class="line">        <span class="attr">app:</span> <span class="string">nginx</span></span><br><span class="line">    <span class="attr">spec:</span></span><br><span class="line">      <span class="attr">containers:</span></span><br><span class="line">      <span class="bullet">-</span> <span class="attr">image:</span> <span class="string">nginx</span></span><br><span class="line">        <span class="attr">name:</span> <span class="string">nginx</span></span><br></pre></td></tr></table></figure>
+<p>我们想要将这个deployment分发到<code>cluster1</code>和<code>cluster2</code>两个工作集群中，那么我们需要创建一个<code>PropagationPolicy</code>来声明<code>Deployment</code>的分发规则：</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">apiVersion:</span> <span class="string">policy.karmada.io/v1alpha1</span></span><br><span class="line"><span class="attr">kind:</span> <span class="string">PropagationPolicy</span></span><br><span class="line"><span class="attr">metadata:</span></span><br><span class="line">  <span class="attr">name:</span> <span class="string">nginx-propagation</span></span><br><span class="line"><span class="attr">spec:</span></span><br><span class="line">  <span class="attr">resourceSelectors:</span></span><br><span class="line">    <span class="bullet">-</span> <span class="attr">apiVersion:</span> <span class="string">apps/v1</span></span><br><span class="line">      <span class="attr">kind:</span> <span class="string">Deployment</span></span><br><span class="line">      <span class="attr">name:</span> <span class="string">nginx</span></span><br><span class="line">  <span class="attr">placement:</span></span><br><span class="line">    <span class="attr">clusterAffinity:</span></span><br><span class="line">      <span class="attr">clusterNames:</span></span><br><span class="line">        <span class="bullet">-</span> <span class="string">cluster1</span></span><br><span class="line">        <span class="bullet">-</span> <span class="string">cluster2</span></span><br></pre></td></tr></table></figure>
+<p>上面这个<code>PropagationPolicy</code>通过spec中的<code>resourceSelectors</code>声明作用的对象为nginx的<code>Deployment</code>，而<code>placement</code>指明分发规则为分发到<code>cluster1</code>和<code>cluster2</code>。因此调度结果如下所示，在<code>cluser1</code>和<code>cluster2</code>两个工作集群中都会创建这个nginx的Deployment:</p>
+<p><img src="/2021/05/20/karmada/propagation.jpg" alt="PropagationPolicy"></p>
+<h2 id="OverridePolicy"><a href="#OverridePolicy" class="headerlink" title="OverridePolicy"></a>OverridePolicy</h2><p>没有OverridePolicy，则worker集群中的deployment和global的deployment的spec相同，但是我们有可能是要针对worker集群的不同或者业务需求修改内容。</p>
+<p>比如现在我们修改cluster1中的deployment的image为<code>nginx:test</code>，用来做一个灰度发布。则我们可以创建一个如下的<code>OverridePolicy</code>：</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">apiVersion:</span> <span class="string">policy.karmada.io/v1alpha1</span></span><br><span class="line"><span class="attr">kind:</span> <span class="string">OverridePolicy</span></span><br><span class="line"><span class="attr">metadata:</span></span><br><span class="line">  <span class="attr">name:</span> <span class="string">nginx-propagation</span></span><br><span class="line"><span class="attr">spec:</span></span><br><span class="line">  <span class="attr">resourceSelectors:</span></span><br><span class="line">    <span class="bullet">-</span> <span class="attr">apiVersion:</span> <span class="string">apps/v1</span></span><br><span class="line">      <span class="attr">kind:</span> <span class="string">Deployment</span></span><br><span class="line">      <span class="attr">name:</span> <span class="string">nginx</span></span><br><span class="line">  <span class="attr">targetCluster:</span></span><br><span class="line">    <span class="attr">clusterNames:</span></span><br><span class="line">    <span class="bullet">-</span> <span class="string">cluster1</span></span><br><span class="line">  <span class="attr">overriders:</span></span><br><span class="line">    <span class="attr">plaintext:</span></span><br><span class="line">    <span class="bullet">-</span> <span class="attr">path:</span> <span class="string">"/spec/template/spec/containers/0/image"</span></span><br><span class="line">      <span class="attr">operator:</span> <span class="string">replace</span></span><br><span class="line">      <span class="attr">value:</span> <span class="string">"nginx:test"</span></span><br></pre></td></tr></table></figure>
+<p>则新的部署结果如下图：</p>
+<p><img src="/2021/05/20/karmada/override.jpg" alt="OverridePolicy"></p>
+<h1 id="处理流程分析"><a href="#处理流程分析" class="headerlink" title="处理流程分析"></a>处理流程分析</h1><p>通过阅读Karmada的源码后，整理了整个的对象处理流程如下图所示<br><img src="/2021/05/20/karmada/dataflow.jpg" alt="处理流程"></p>
+<ol>
+<li>用户在global集群中创建对象；</li>
+<li><strong>Resource Detector</strong>会每30s去list集群中的所有资源，放到队列中；</li>
+<li><strong>Resource Detector</strong>会对队列中的每个对象查找匹配的<code>PropagationPolicy</code>，创建<code>Binding</code>；</li>
+<li>此时的<code>Binding</code>中没有targetCluster，而<strong>Karmada Scheduler</strong>会根据<code>Cluster</code>和<code>PropagationPolicy</code>计算调度结果，填入<code>Binding</code>的targetCluster；</li>
+<li><strong>BindingController</strong>会watch <code>OverridePolicy</code>和<code>Binding</code>，创建<code>Work</code>(每个cluster会有一个namespace)；</li>
+<li><strong>ExecutionController</strong>watch到<code>Work</code>对象，提取<code>spec.workload</code>定义的对象，然后调用worker集群的client来创建和修改对象；</li>
+<li>而worker集群的Agent则同样会watch <code>Work</code>对象并同步<code>Workload</code>的状态到<code>Work</code>；</li>
+</ol>
+<h1 id="Karmada优点和缺点"><a href="#Karmada优点和缺点" class="headerlink" title="Karmada优点和缺点"></a>Karmada优点和缺点</h1><h2 id="优点"><a href="#优点" class="headerlink" title="优点"></a>优点</h2><p>通过对Karmada的文档和源码分析，Karmada相对于kubefed v2的最大优点：<strong>完全兼容k8s的API</strong>。</p>
+<p>应用从单集群扩展为多集群时，不需要修改源文件，仅需要添加多集群的manifest包括PropagationPolicy和OverridePolicy，这些文件完全可以由运维同学来添加。因此用户迁移和学习成本不大。</p>
+<h2 id="缺点"><a href="#缺点" class="headerlink" title="缺点"></a>缺点</h2><p>但是Karmada也有致命的缺点：<strong>对象会在global集群被处理</strong>。例如用户创建一个Deployment，实际上global集群里面也会创建这个deployment。这会有两个问题：</p>
+<ol>
+<li><strong>浪费global集群的资源</strong>。尤其是用户本来是想通过多集群来解决单集群pod数量不足的问题，这样反而浪费了资源也没解决问题；</li>
+<li><strong>管理困惑</strong>。用户实际上只想在worker集群创建对象，但是global集群中也会存在这个对象；</li>
+</ol>
+<p>当然如何解决多个controller在reconcile同一个对象时造成的冲突，也是Karmada后续coding可能会比较痛苦的地方。</p>
+<h1 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h1><p>Karmada出发点是想让用户尽量不要修改原始的物料，来完成单集群到多集群的修改。但是本文也指出了Karmada的致命缺点，即无法阻止对象在global集群中的reconcile，而且这个问题也不太好解决。如果无法解决的话，可能目前Karmada并没有比kubefed v2有多少优势，我个人反而不建议用Karmada。所以也是需要华为和社区的同学更加努力演进吧。</p>
+
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+        
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block home" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="/2021/05/07/argo-workflow/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="雄哥good">
+      <meta itemprop="description" content="技术日新月异，碎片化的学习总不得安心，因此开此blog定期记录和总结所思和所得">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="大雄的部落阁">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          
+            <a href="/2021/05/07/argo-workflow/" class="post-title-link" itemprop="url">云原生流程引擎argo-workflow解析</a>
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2021-05-07 21:14:05 / 修改时间：21:19:59" itemprop="dateCreated datePublished" datetime="2021-05-07T21:14:05+08:00">2021-05-07</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Cloud/" itemprop="url" rel="index">
+                    <span itemprop="name">Cloud</span>
+                  </a>
+                </span>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <blockquote>
+<p>在工作中我们经常需要一些任务编排工具，例如做机器学习训练，大数据处理，pipeline之类的开发。而argo-workflow正是利用k8s的CRD开发出来的一款开源的流程引擎，</p>
+</blockquote>
+
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+        
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block home" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="/2020/07/04/argo-rollout/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -885,7 +1088,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">6</span>
+          <span class="site-state-item-count">8</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
