@@ -221,7 +221,7 @@
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2021-05-23 16:21:01" itemprop="dateModified" datetime="2021-05-23T16:21:01+08:00">2021-05-23</time>
+                <time title="修改时间：2022-03-05 21:19:14" itemprop="dateModified" datetime="2022-03-05T21:19:14+08:00">2022-03-05</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -295,13 +295,12 @@
 </ol>
 <h1 id="Karmada优点和缺点"><a href="#Karmada优点和缺点" class="headerlink" title="Karmada优点和缺点"></a>Karmada优点和缺点</h1><h2 id="优点"><a href="#优点" class="headerlink" title="优点"></a>优点</h2><p>通过对Karmada的文档和源码分析，Karmada相对于kubefed v2的最大优点：<strong>完全兼容k8s的API</strong>。</p>
 <p>应用从单集群扩展为多集群时，不需要修改源文件，仅需要添加多集群的manifest包括PropagationPolicy和OverridePolicy，这些文件完全可以由运维同学来添加。因此用户迁移和学习成本不大。</p>
-<h2 id="缺点"><a href="#缺点" class="headerlink" title="缺点"></a>缺点</h2><p>但是Karmada也有致命的缺点：<strong>对象会在global集群被处理</strong>。例如用户创建一个Deployment，实际上global集群里面也会创建这个deployment。这会有两个问题：</p>
+<h2 id="缺点"><a href="#缺点" class="headerlink" title="缺点"></a>缺点</h2><p>但是Karmada也有一些缺点：</p>
 <ol>
-<li><strong>浪费global集群的资源</strong>。尤其是用户本来是想通过多集群来解决单集群pod数量不足的问题，这样反而浪费了资源也没解决问题；</li>
-<li><strong>管理困惑</strong>。用户实际上只想在worker集群创建对象，但是global集群中也会存在这个对象；</li>
+<li><strong>演进维护成本</strong>。由于karmada是基于k8s的控制组件做修改，如何保持与后续k8s新的对象和feature同步，也是一个挑战；</li>
+<li><strong>所有workload的支持</strong>。笔者在调研karmada的时候，karmada还只支持deployment，并且在worker controller里面发现有一些细小逻辑在对不同workload做一些特殊处理，因此如果karmada支持的workload和对象越多，后续这种逻辑也会更多。如果不通读整个工程话，是挺容易产生bug的，后续维护也挺头痛；</li>
 </ol>
-<p>当然如何解决多个controller在reconcile同一个对象时造成的冲突，也是Karmada后续coding可能会比较痛苦的地方。</p>
-<h1 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h1><p>Karmada出发点是想让用户尽量不要修改原始的物料，来完成单集群到多集群的修改。但是本文也指出了Karmada的致命缺点，即无法阻止对象在global集群中的reconcile，而且这个问题也不太好解决。如果无法解决的话，可能目前Karmada并没有比kubefed v2有多少优势，我个人反而不建议用Karmada。所以也是需要华为和社区的同学更加努力演进吧。</p>
+<h1 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h1><p>Karmada出发点是想让用户尽量不要修改原始的物料，来完成单集群到多集群的修改。但是本文也指出了Karmada的一些缺点(也是感谢评论区的指正)。同时社区也有一个竞品方案<a href="https://open-cluster-management.io，但是整体开发进度没有karmada快，过段时间也会专门对比一下。">https://open-cluster-management.io，但是整体开发进度没有karmada快，过段时间也会专门对比一下。</a></p>
 
       
     </div>
@@ -1137,7 +1136,7 @@
 <div class="copyright">
   
   &copy; 
-  <span itemprop="copyrightYear">2021</span>
+  <span itemprop="copyrightYear">2022</span>
   <span class="with-love">
     <i class="fa fa-user"></i>
   </span>
