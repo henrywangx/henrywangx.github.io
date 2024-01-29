@@ -58,7 +58,7 @@
 <meta property="og:site_name" content="大雄的部落阁">
 <meta property="og:description" content="大数据和云原生一直都是基建方面的两个热点，而现在越来越多的大数据基建逐渐往云原生方向发展，例如云原生的消息队列Pulsar，又例如Snowflake提供云原生的数仓。因此笔者想要探索大数据和云原生的结合，于是发现了一个非常有意思的项目Openlake，该项目挂在minio下，是在kubernetes环境下，利用minion，spark，kafka，dremio，iceberg搭建一套数据湖，非常">
 <meta property="og:locale" content="zh-CN">
-<meta property="og:updated_time" content="2023-05-27T01:47:42.000Z">
+<meta property="og:updated_time" content="2024-01-07T14:17:42.000Z">
 <meta name="twitter:card" content="summary">
 
 <link rel="canonical" href="/2023/05/26/openlake/">
@@ -222,7 +222,7 @@
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2023-05-27 09:47:42" itemprop="dateModified" datetime="2023-05-27T09:47:42+08:00">2023-05-27</time>
+                <time title="修改时间：2024-01-07 22:17:42" itemprop="dateModified" datetime="2024-01-07T22:17:42+08:00">2024-01-07</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -258,7 +258,7 @@
 <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">mkdir -p /home/xiowang/k3s</span><br><span class="line">mkdir -p /home/xiowang/k3s/data</span><br></pre></td></tr></table></figure>
 
 <p>创建docker-compose.yaml用于k3s启动：</p>
-<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">#vim /home/xiowang/k3s/docker-compose.yaml</span></span><br><span class="line">version: <span class="string">'3'</span></span><br><span class="line">services:</span><br><span class="line">  server:</span><br><span class="line">    image: rancher/k3s:v1.20.2-k3s1</span><br><span class="line">    container_name: k3s_server</span><br><span class="line">    hostname: xiowang.dev</span><br><span class="line">    <span class="built_in">command</span>: server --tls-san=xiowang.dev</span><br><span class="line">    tmpfs:</span><br><span class="line">    - /run</span><br><span class="line">    - /var/run</span><br><span class="line">    privileged: <span class="literal">true</span></span><br><span class="line">    restart: always</span><br><span class="line">    ports:</span><br><span class="line">    - 6443:6443</span><br><span class="line">    - 443:30443</span><br><span class="line">    - 80:30080</span><br><span class="line">    - 50050:30050</span><br><span class="line">    - 50051:30051</span><br><span class="line">    environment:</span><br><span class="line">    - K3S_TOKEN=16963276443662</span><br><span class="line">    - K3S_KUBECONFIG_OUTPUT=/root/.kube/config</span><br><span class="line">    - K3S_KUBECONFIG_MODE=600</span><br><span class="line">    volumes:</span><br><span class="line">    - /var/lib/rancher/k3s:/var/lib/rancher/k3s</span><br><span class="line">    - /etc/rancher:/etc/rancher</span><br><span class="line">    - /home/xiowang/k3s/.kube:/root/.kube</span><br><span class="line">    - /home/xiowang/k3s/data:/data:shared,rw</span><br></pre></td></tr></table></figure>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">#vim /home/xiowang/k3s/docker-compose.yaml</span></span><br><span class="line">version: <span class="string">'3'</span></span><br><span class="line">services:</span><br><span class="line">  server:</span><br><span class="line">    image: rancher/k3s:v1.20.2-k3s1</span><br><span class="line">    container_name: k3s_server</span><br><span class="line">    hostname: xiowang.dev</span><br><span class="line">    <span class="built_in">command</span>: server --tls-san=xiowang.dev</span><br><span class="line">    tmpfs:</span><br><span class="line">    - /run</span><br><span class="line">    - /var/run</span><br><span class="line">    privileged: <span class="literal">true</span></span><br><span class="line">    restart: always</span><br><span class="line">    ports:</span><br><span class="line">    - 6443:6443</span><br><span class="line">    - 443:30443</span><br><span class="line">    - 80:30080</span><br><span class="line">    - 50050:30050</span><br><span class="line">    - 50051:30051</span><br><span class="line">    - 32000:32000</span><br><span class="line">    - 32001:32001</span><br><span class="line">    environment:</span><br><span class="line">    - K3S_TOKEN=16963276443662</span><br><span class="line">    - K3S_KUBECONFIG_OUTPUT=/root/.kube/config</span><br><span class="line">    - K3S_KUBECONFIG_MODE=600</span><br><span class="line">    volumes:</span><br><span class="line">    - /var/lib/rancher/k3s:/var/lib/rancher/k3s</span><br><span class="line">    - /etc/rancher:/etc/rancher</span><br><span class="line">    - /home/xiowang/k3s/.kube:/root/.kube</span><br><span class="line">    - /home/xiowang/k3s/data:/data:shared,rw</span><br></pre></td></tr></table></figure>
 
 <p>上面的配置，我们主要做了：</p>
 <ol>
@@ -266,6 +266,7 @@
 <li>通过本机的443和80分别映射集群的nodeport：30443和30080；</li>
 <li>把kubeconfig保存到/home/xiowang/k3s/.kube;</li>
 <li>挂载集群的/data目录到/home/xiowang/k3s/data</li>
+<li>本地的32000和32001用于后续暴露minio的端口；</li>
 </ol>
 <p>开始启动k3s:</p>
 <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">cd</span> /home/xiowang/k3s</span><br><span class="line">docker-compose up -d</span><br></pre></td></tr></table></figure>
@@ -283,7 +284,7 @@
 <li>helm安装minio，参考<a href="https://github.com/minio/minio/tree/master/helm/minio">guide</a></li>
 </ol>
 <p>这里暂时没时间学习operator的CRD，所以采用helm安装minio，步骤如下</p>
-<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">helm repo add minio https://charts.min.io/</span><br><span class="line"><span class="comment">#设置密码和磁盘大小，默认也没有tls(根据需求改一下，我就20Gi用于测试)</span></span><br><span class="line">helm install --namespace minio --<span class="built_in">set</span> rootUser=rootuser,rootPassword=rootpass123,persistence.size=20Gi,resources.requests.memory=100Mi,resources.limits.memory=2Gi,replicas=3 one --create-namespace minio/minio</span><br></pre></td></tr></table></figure>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">helm repo add minio https://charts.min.io/</span><br><span class="line"><span class="comment">#设置密码和磁盘大小，默认也没有tls(根据需求改一下，我就20Gi用于测试)</span></span><br><span class="line">helm upgrade --install --namespace minio --<span class="built_in">set</span> rootUser=rootuser,rootPassword=rootpass123,persistence.size=20Gi,resources.requests.memory=100Mi,resources.limits.memory=2Gi,replicas=3,service.type=NodePort,consoleService.type=NodePort one --create-namespace minio/minio</span><br></pre></td></tr></table></figure>
 
 <p>成功部署日志：</p>
 <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line">espace minio/minio</span><br><span class="line">NAME: one</span><br><span class="line">LAST DEPLOYED: Mon May 22 12:22:31 2023</span><br><span class="line">NAMESPACE: minio</span><br><span class="line">STATUS: deployed</span><br><span class="line">REVISION: 1</span><br><span class="line">TEST SUITE: None</span><br><span class="line">NOTES:</span><br><span class="line">MinIO can be accessed via port 9000 on the following DNS name from within your cluster:</span><br><span class="line">one-minio.minio.svc.cluster.local</span><br><span class="line"></span><br><span class="line">To access MinIO from localhost, run the below commands:</span><br><span class="line"></span><br><span class="line">  1. <span class="built_in">export</span> POD_NAME=$(kubectl get pods --namespace minio -l <span class="string">"release=one"</span> -o jsonpath=<span class="string">"&#123;.items[0].metadata.name&#125;"</span>)</span><br><span class="line"></span><br><span class="line">  2. kubectl port-forward <span class="variable">$POD_NAME</span> 9000 --namespace minio</span><br><span class="line"></span><br><span class="line">Read more about port forwarding here: http://kubernetes.io/docs/user-guide/kubectl/kubectl_port-forward/</span><br><span class="line"></span><br><span class="line">You can now access MinIO server on http://localhost:9000. Follow the below steps to connect to MinIO server with mc client:</span><br><span class="line"></span><br><span class="line">  1. Download the MinIO mc client - https://min.io/docs/minio/linux/reference/minio-mc.html<span class="comment">#quickstart</span></span><br><span class="line"></span><br><span class="line">  2. <span class="built_in">export</span> MC_HOST_one-minio-local=http://$(kubectl get secret --namespace minio one-minio -o jsonpath=<span class="string">"&#123;.data.rootUser&#125;"</span> | base64 --decode):$(kubectl get secret --namespace minio one-minio -o jsonpath=<span class="string">"&#123;.data.rootPassword&#125;"</span> | base64 --decode)@localhost:9000</span><br><span class="line"></span><br><span class="line">  3. mc ls one-minio-local</span><br></pre></td></tr></table></figure>
@@ -388,6 +389,9 @@
             <span class="post-nav-divider"></span>
 
             <div class="post-nav-prev post-nav-item">
+                <a href="/2023/12/21/iceberg/" rel="prev" title="iceberg">
+                  iceberg <i class="fa fa-chevron-right"></i>
+                </a>
             </div>
           </div>
       </footer>
@@ -443,7 +447,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">9</span>
+          <span class="site-state-item-count">11</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
@@ -456,7 +460,7 @@
       <div class="site-state-item site-state-tags">
             <a href="/tags/">
           
-        <span class="site-state-item-count">8</span>
+        <span class="site-state-item-count">9</span>
         <span class="site-state-item-name">标签</span></a>
       </div>
   </nav>
@@ -492,7 +496,7 @@
 <div class="copyright">
   
   &copy; 
-  <span itemprop="copyrightYear">2023</span>
+  <span itemprop="copyrightYear">2024</span>
   <span class="with-love">
     <i class="fa fa-user"></i>
   </span>

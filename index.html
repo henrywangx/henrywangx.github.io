@@ -190,6 +190,182 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block home" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="/2024/01/29/docker-lakehouse/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="雄哥good">
+      <meta itemprop="description" content="技术日新月异，碎片化的学习总不得安心，因此开此blog定期记录和总结所思和所得">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="大雄的部落阁">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          
+            <a href="/2024/01/29/docker-lakehouse/" class="post-title-link" itemprop="url">docker-lakehouse</a>
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2024-01-29 21:51:49 / 修改时间：22:14:01" itemprop="dateCreated datePublished" datetime="2024-01-29T21:51:49+08:00">2024-01-29</time>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <blockquote>
+<p>之前用k3s搭建了大数据环境，但是发现不是特别方便，并且会反复修改，因此考虑到实验的便捷性又用docker搭了一下开发环境，所有的物料链接见<a href="https://github.com/henrywangx/dev-cluster">https://github.com/henrywangx/dev-cluster</a></p>
+</blockquote>
+<h1 id="Dev-cluster搭建"><a href="#Dev-cluster搭建" class="headerlink" title="Dev cluster搭建"></a>Dev cluster搭建</h1><h2 id="1-安装"><a href="#1-安装" class="headerlink" title="1.安装"></a>1.安装</h2><p>前提：docker和docker-compose已经安装</p>
+<p>1.拉起容器</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">make up</span><br></pre></td></tr></table></figure>
+
+<p>2.到 <a href="http://dltest.minio.org.cn/client/mc/release/">minio中国下载</a> 下载mc客户端</p>
+<p>3.添加dev集群到mc</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">mc config host add dev http://localhost:9000 minio minio123 --api s3v4</span><br></pre></td></tr></table></figure>
+
+<p>4.创建minio的accesskey/secret, 并保存到本地<br><img src="/2024/01/29/docker-lakehouse/minio-access-key.png" alt="创建minio access key"></p>
+<p>5.使用minio的access key信息更新<code>.env</code>文件</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># AWS_REGION is used by Spark</span></span><br><span class="line">AWS_REGION=us-east-1</span><br><span class="line"><span class="comment"># This must match if using minio</span></span><br><span class="line">MINIO_REGION=us-east-1</span><br><span class="line"><span class="comment"># Used by pyIceberg</span></span><br><span class="line">AWS_DEFAULT_REGION=us-east-1</span><br><span class="line"><span class="comment"># AWS Credentials (this can use minio credential, to be filled in later)</span></span><br><span class="line">AWS_ACCESS_KEY_ID=qUgyOn1f3rbQkXAgCYLa</span><br><span class="line">AWS_SECRET_ACCESS_KEY=MJA9lmnlESWEJZgmJ5Itdee94DUF16wSMfyhsIzT</span><br><span class="line"><span class="comment"># If using Minio, this should be the API address of Minio Server</span></span><br><span class="line">AWS_S3_ENDPOINT=http://minio:9000</span><br><span class="line"><span class="comment"># Location where files will be written when creating new tables</span></span><br><span class="line">WAREHOUSE=s3a://openlake/</span><br><span class="line"><span class="comment"># URI of Nessie Catalog</span></span><br><span class="line">NESSIE_URI=http://nessie:19120/api/v1</span><br><span class="line">GRANT_SUDO=yes</span><br></pre></td></tr></table></figure>
+
+<p>重新拉起容器</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">make up</span><br></pre></td></tr></table></figure>
+
+
+<h2 id="2-数据准备"><a href="#2-数据准备" class="headerlink" title="2.数据准备"></a>2.数据准备</h2><p>1.创建bucket openlake/spark/sample-data/</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 输入bucket</span></span><br><span class="line">mc mb dev/openlake/spark/sample-data/</span><br><span class="line"><span class="comment"># 输出bucket</span></span><br><span class="line">mc mb dev/openlake-tmp/spark/nyc/taxis_small</span><br></pre></td></tr></table></figure>
+
+<p>2.下载出租车数据拷贝到minio中</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">wget  https://data.cityofnewyork.us/api/views/t29m-gskq/rows.csv ./</span><br><span class="line">mc cp rows.csv dev/openlake/spark/sample-data/</span><br></pre></td></tr></table></figure>
+
+
+<h2 id="3-运行spark任务"><a href="#3-运行spark任务" class="headerlink" title="3.运行spark任务"></a>3.运行spark任务</h2><p>1.网页访问jupyter地址: <a href="localhost:8888">localhost:8888</a></p>
+<p>2.运行<code>spark-minio.py</code>脚本</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">python3 spark-minio.py</span><br></pre></td></tr></table></figure>
+
+<p>3.查看spark管理页面:<a href="localhost:8080">localhost:8080</a>和jupyter的4040端口<a href="localhost:4040">localhost:4040</a>，分别可以查看运行的application信息和job的详情信息</p>
+<p>application信息：<br><img src="/2024/01/29/docker-lakehouse/spark-ui.png" alt="spark application"></p>
+<p>job详情:<br><img src="/2024/01/29/docker-lakehouse/spark-job.png" alt="spark job详情"></p>
+<p>4.等待python执行完毕，查看结果，可以看到外面算出来超过6名乘客的taxi为898</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">jovyan@jupyter-lab:~$ python3 spark-minio.py </span><br><span class="line">Setting default <span class="built_in">log</span> level to <span class="string">"WARN"</span>.</span><br><span class="line">...</span><br><span class="line">2024-01-28 07:55:20,121 - MinIOSparkJob - INFO - Total Rows <span class="keyword">for</span> NYC Taxi Data: 91704300               </span><br><span class="line">2024-01-28 07:55:20,121 - MinIOSparkJob - INFO - Total Rows <span class="keyword">for</span> Passenger Count &gt; 6: 898</span><br></pre></td></tr></table></figure>
+
+<h2 id="4-使用pyspark-iceberg管理table"><a href="#4-使用pyspark-iceberg管理table" class="headerlink" title="4.使用pyspark-iceberg管理table"></a>4.使用pyspark-iceberg管理table</h2><p>1.创建<code>warehouse</code> bucket</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">mc mb dev/warehouse</span><br></pre></td></tr></table></figure>
+
+<p>2.运行<code>spark-iceberg-minio.py</code></p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">python3 spark-iceberg-minio.py</span><br></pre></td></tr></table></figure>
+
+<h2 id="5-配置dremio"><a href="#5-配置dremio" class="headerlink" title="5.配置dremio"></a>5.配置dremio</h2><p>1.登录dremio页面：<a href="localhost:9047">localhost:9047</a>，创建s3的source<br>s3 source配置：<br><img src="/2024/01/29/docker-lakehouse/dremio-s3-general.png" alt="dremio-s3-general"><br>s3 advanced配置：<br>s3配置这里加了以下配置：</p>
+<ol>
+<li><code>fs.s3a.path.style.access</code>: <code>true</code></li>
+<li><code>fs.s3a.endpoint</code>: <code>http://minio:9000</code></li>
+<li><code>dremio.s3.compat</code>: <code>true</code></li>
+<li>勾选enable compatibility mode, 因为我们是minio</li>
+</ol>
+<p><img src="/2024/01/29/docker-lakehouse/dremio-s3-advanced.png" alt="dremio-s3-advanced"></p>
+<p>2.format table为iceberg，进入到nyc.taxis_large这个目录，然后点击format table的按钮，保存为iceberg</p>
+<p><img src="/2024/01/29/docker-lakehouse/dremio-s3-format.png" alt="dremio-s3-format"></p>
+<p>3.format为iceberg后，我们就能发现一个table，选中table，运行sql，发现我们可以用sql来操作iceberg表了，哈哈</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">SELECT</span> * <span class="keyword">FROM</span> taxis_large <span class="keyword">limit</span> <span class="number">10</span></span><br></pre></td></tr></table></figure>
+
+<p><img src="/2024/01/29/docker-lakehouse/dremio-s3-sql.png" alt="dremio-s3-sql"></p>
+<h1 id="参考"><a href="#参考" class="headerlink" title="参考"></a>参考</h1><p><a href="https://www.cnblogs.com/rongfengliang/p/17970071">https://www.cnblogs.com/rongfengliang/p/17970071</a><br><a href="https://github.com/minio/openlake/tree/main">https://github.com/minio/openlake/tree/main</a><br><a href="https://www.linkedin.com/pulse/creating-local-data-lakehouse-using-alex-merced/">https://www.linkedin.com/pulse/creating-local-data-lakehouse-using-alex-merced/</a><br><a href="https://medium.com/@ongxuanhong/dataops-02-spawn-up-apache-spark-infrastructure-by-using-docker-fec518698993">https://medium.com/@ongxuanhong/dataops-02-spawn-up-apache-spark-infrastructure-by-using-docker-fec518698993</a><br><a href="https://medium.com/@ongxuanhong/are-you-looking-for-a-powerful-way-to-streamline-your-data-analytics-pipeline-and-produce-cc13ea326790">https://medium.com/@ongxuanhong/are-you-looking-for-a-powerful-way-to-streamline-your-data-analytics-pipeline-and-produce-cc13ea326790</a></p>
+
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+        
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block home" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="/2023/12/21/iceberg/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="雄哥good">
+      <meta itemprop="description" content="技术日新月异，碎片化的学习总不得安心，因此开此blog定期记录和总结所思和所得">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="大雄的部落阁">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          
+            <a href="/2023/12/21/iceberg/" class="post-title-link" itemprop="url">iceberg</a>
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2023-12-21 21:37:13 / 修改时间：21:45:10" itemprop="dateCreated datePublished" datetime="2023-12-21T21:37:13+08:00">2023-12-21</time>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h1 id="1-docker安装spark和minio"><a href="#1-docker安装spark和minio" class="headerlink" title="1.docker安装spark和minio"></a>1.docker安装spark和minio</h1><p>编辑docker-compose.yaml</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">version:</span> <span class="string">"3"</span></span><br><span class="line"></span><br><span class="line"><span class="attr">services:</span></span><br><span class="line">  <span class="attr">spark-iceberg:</span></span><br><span class="line">    <span class="attr">image:</span> <span class="string">tabulario/spark-iceberg</span></span><br><span class="line">    <span class="attr">container_name:</span> <span class="string">spark-iceberg</span></span><br><span class="line">    <span class="attr">build:</span> <span class="string">spark/</span></span><br><span class="line">    <span class="attr">networks:</span></span><br><span class="line">      <span class="attr">iceberg_net:</span></span><br><span class="line">    <span class="attr">depends_on:</span></span><br><span class="line">      <span class="bullet">-</span> <span class="string">rest</span></span><br><span class="line">      <span class="bullet">-</span> <span class="string">minio</span></span><br><span class="line">    <span class="attr">volumes:</span></span><br><span class="line">      <span class="bullet">-</span> <span class="string">./warehouse:/home/iceberg/warehouse</span></span><br><span class="line">      <span class="bullet">-</span> <span class="string">./notebooks:/home/iceberg/notebooks/notebooks</span></span><br><span class="line">    <span class="attr">environment:</span></span><br><span class="line">      <span class="bullet">-</span> <span class="string">AWS_ACCESS_KEY_ID=admin</span></span><br><span class="line">      <span class="bullet">-</span> <span class="string">AWS_SECRET_ACCESS_KEY=password</span></span><br><span class="line">      <span class="bullet">-</span> <span class="string">AWS_REGION=us-east-1</span></span><br><span class="line">    <span class="attr">ports:</span></span><br><span class="line">      <span class="bullet">-</span> <span class="number">8888</span><span class="string">:8888</span></span><br><span class="line">      <span class="bullet">-</span> <span class="number">8080</span><span class="string">:8080</span></span><br><span class="line">      <span class="bullet">-</span> <span class="number">10000</span><span class="string">:10000</span></span><br><span class="line">      <span class="bullet">-</span> <span class="number">10001</span><span class="string">:10001</span></span><br><span class="line">  <span class="attr">rest:</span></span><br><span class="line">    <span class="attr">image:</span> <span class="string">tabulario/iceberg-rest</span></span><br><span class="line">    <span class="attr">container_name:</span> <span class="string">iceberg-rest</span></span><br><span class="line">    <span class="attr">networks:</span></span><br><span class="line">      <span class="attr">iceberg_net:</span></span><br><span class="line">    <span class="attr">ports:</span></span><br><span class="line">      <span class="bullet">-</span> <span class="number">8181</span><span class="string">:8181</span></span><br><span class="line">    <span class="attr">environment:</span></span><br><span class="line">      <span class="bullet">-</span> <span class="string">AWS_ACCESS_KEY_ID=admin</span></span><br><span class="line">      <span class="bullet">-</span> <span class="string">AWS_SECRET_ACCESS_KEY=password</span></span><br><span class="line">      <span class="bullet">-</span> <span class="string">AWS_REGION=us-east-1</span></span><br><span class="line">      <span class="bullet">-</span> <span class="string">CATALOG_WAREHOUSE=s3://warehouse/</span></span><br><span class="line">      <span class="bullet">-</span> <span class="string">CATALOG_IO__IMPL=org.apache.iceberg.aws.s3.S3FileIO</span></span><br><span class="line">      <span class="bullet">-</span> <span class="string">CATALOG_S3_ENDPOINT=http://minio:9000</span></span><br><span class="line">  <span class="attr">minio:</span></span><br><span class="line">    <span class="attr">image:</span> <span class="string">minio/minio</span></span><br><span class="line">    <span class="attr">container_name:</span> <span class="string">minio</span></span><br><span class="line">    <span class="attr">environment:</span></span><br><span class="line">      <span class="bullet">-</span> <span class="string">MINIO_ROOT_USER=admin</span></span><br><span class="line">      <span class="bullet">-</span> <span class="string">MINIO_ROOT_PASSWORD=password</span></span><br><span class="line">      <span class="bullet">-</span> <span class="string">MINIO_DOMAIN=minio</span></span><br><span class="line">    <span class="attr">networks:</span></span><br><span class="line">      <span class="attr">iceberg_net:</span></span><br><span class="line">        <span class="attr">aliases:</span></span><br><span class="line">          <span class="bullet">-</span> <span class="string">warehouse.minio</span></span><br><span class="line">    <span class="attr">ports:</span></span><br><span class="line">      <span class="bullet">-</span> <span class="number">9001</span><span class="string">:9001</span></span><br><span class="line">      <span class="bullet">-</span> <span class="number">9000</span><span class="string">:9000</span></span><br><span class="line">    <span class="attr">command:</span> <span class="string">["server",</span> <span class="string">"/data"</span><span class="string">,</span> <span class="string">"--console-address"</span><span class="string">,</span> <span class="string">":9001"</span><span class="string">]</span></span><br><span class="line">  <span class="attr">mc:</span></span><br><span class="line">    <span class="attr">depends_on:</span></span><br><span class="line">      <span class="bullet">-</span> <span class="string">minio</span></span><br><span class="line">    <span class="attr">image:</span> <span class="string">minio/mc</span></span><br><span class="line">    <span class="attr">container_name:</span> <span class="string">mc</span></span><br><span class="line">    <span class="attr">networks:</span></span><br><span class="line">      <span class="attr">iceberg_net:</span></span><br><span class="line">    <span class="attr">environment:</span></span><br><span class="line">      <span class="bullet">-</span> <span class="string">AWS_ACCESS_KEY_ID=admin</span></span><br><span class="line">      <span class="bullet">-</span> <span class="string">AWS_SECRET_ACCESS_KEY=password</span></span><br><span class="line">      <span class="bullet">-</span> <span class="string">AWS_REGION=us-east-1</span></span><br><span class="line">    <span class="attr">entrypoint:</span> <span class="string">&gt;</span></span><br><span class="line">      <span class="string">/bin/sh</span> <span class="string">-c</span> <span class="string">"</span></span><br><span class="line"><span class="string">      until (/usr/bin/mc config host add minio http://minio:9000 admin password) do echo '...waiting...' &amp;&amp; sleep 1; done;</span></span><br><span class="line"><span class="string">      /usr/bin/mc rm -r --force minio/warehouse;</span></span><br><span class="line"><span class="string">      /usr/bin/mc mb minio/warehouse;</span></span><br><span class="line"><span class="string">      /usr/bin/mc policy set public minio/warehouse;</span></span><br><span class="line"><span class="string">      tail -f /dev/null</span></span><br><span class="line"><span class="string">      "</span>      </span><br><span class="line"><span class="attr">networks:</span></span><br><span class="line">  <span class="attr">iceberg_net:</span></span><br></pre></td></tr></table></figure>
+
+
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+        
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block home" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="/2023/05/26/openlake/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -221,7 +397,7 @@
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2023-05-27 09:47:42" itemprop="dateModified" datetime="2023-05-27T09:47:42+08:00">2023-05-27</time>
+                <time title="修改时间：2024-01-07 22:17:42" itemprop="dateModified" datetime="2024-01-07T22:17:42+08:00">2024-01-07</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -257,7 +433,7 @@
 <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">mkdir -p /home/xiowang/k3s</span><br><span class="line">mkdir -p /home/xiowang/k3s/data</span><br></pre></td></tr></table></figure>
 
 <p>创建docker-compose.yaml用于k3s启动：</p>
-<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">#vim /home/xiowang/k3s/docker-compose.yaml</span></span><br><span class="line">version: <span class="string">'3'</span></span><br><span class="line">services:</span><br><span class="line">  server:</span><br><span class="line">    image: rancher/k3s:v1.20.2-k3s1</span><br><span class="line">    container_name: k3s_server</span><br><span class="line">    hostname: xiowang.dev</span><br><span class="line">    <span class="built_in">command</span>: server --tls-san=xiowang.dev</span><br><span class="line">    tmpfs:</span><br><span class="line">    - /run</span><br><span class="line">    - /var/run</span><br><span class="line">    privileged: <span class="literal">true</span></span><br><span class="line">    restart: always</span><br><span class="line">    ports:</span><br><span class="line">    - 6443:6443</span><br><span class="line">    - 443:30443</span><br><span class="line">    - 80:30080</span><br><span class="line">    - 50050:30050</span><br><span class="line">    - 50051:30051</span><br><span class="line">    environment:</span><br><span class="line">    - K3S_TOKEN=16963276443662</span><br><span class="line">    - K3S_KUBECONFIG_OUTPUT=/root/.kube/config</span><br><span class="line">    - K3S_KUBECONFIG_MODE=600</span><br><span class="line">    volumes:</span><br><span class="line">    - /var/lib/rancher/k3s:/var/lib/rancher/k3s</span><br><span class="line">    - /etc/rancher:/etc/rancher</span><br><span class="line">    - /home/xiowang/k3s/.kube:/root/.kube</span><br><span class="line">    - /home/xiowang/k3s/data:/data:shared,rw</span><br></pre></td></tr></table></figure>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">#vim /home/xiowang/k3s/docker-compose.yaml</span></span><br><span class="line">version: <span class="string">'3'</span></span><br><span class="line">services:</span><br><span class="line">  server:</span><br><span class="line">    image: rancher/k3s:v1.20.2-k3s1</span><br><span class="line">    container_name: k3s_server</span><br><span class="line">    hostname: xiowang.dev</span><br><span class="line">    <span class="built_in">command</span>: server --tls-san=xiowang.dev</span><br><span class="line">    tmpfs:</span><br><span class="line">    - /run</span><br><span class="line">    - /var/run</span><br><span class="line">    privileged: <span class="literal">true</span></span><br><span class="line">    restart: always</span><br><span class="line">    ports:</span><br><span class="line">    - 6443:6443</span><br><span class="line">    - 443:30443</span><br><span class="line">    - 80:30080</span><br><span class="line">    - 50050:30050</span><br><span class="line">    - 50051:30051</span><br><span class="line">    - 32000:32000</span><br><span class="line">    - 32001:32001</span><br><span class="line">    environment:</span><br><span class="line">    - K3S_TOKEN=16963276443662</span><br><span class="line">    - K3S_KUBECONFIG_OUTPUT=/root/.kube/config</span><br><span class="line">    - K3S_KUBECONFIG_MODE=600</span><br><span class="line">    volumes:</span><br><span class="line">    - /var/lib/rancher/k3s:/var/lib/rancher/k3s</span><br><span class="line">    - /etc/rancher:/etc/rancher</span><br><span class="line">    - /home/xiowang/k3s/.kube:/root/.kube</span><br><span class="line">    - /home/xiowang/k3s/data:/data:shared,rw</span><br></pre></td></tr></table></figure>
 
 <p>上面的配置，我们主要做了：</p>
 <ol>
@@ -265,6 +441,7 @@
 <li>通过本机的443和80分别映射集群的nodeport：30443和30080；</li>
 <li>把kubeconfig保存到/home/xiowang/k3s/.kube;</li>
 <li>挂载集群的/data目录到/home/xiowang/k3s/data</li>
+<li>本地的32000和32001用于后续暴露minio的端口；</li>
 </ol>
 <p>开始启动k3s:</p>
 <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">cd</span> /home/xiowang/k3s</span><br><span class="line">docker-compose up -d</span><br></pre></td></tr></table></figure>
@@ -282,7 +459,7 @@
 <li>helm安装minio，参考<a href="https://github.com/minio/minio/tree/master/helm/minio">guide</a></li>
 </ol>
 <p>这里暂时没时间学习operator的CRD，所以采用helm安装minio，步骤如下</p>
-<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">helm repo add minio https://charts.min.io/</span><br><span class="line"><span class="comment">#设置密码和磁盘大小，默认也没有tls(根据需求改一下，我就20Gi用于测试)</span></span><br><span class="line">helm install --namespace minio --<span class="built_in">set</span> rootUser=rootuser,rootPassword=rootpass123,persistence.size=20Gi,resources.requests.memory=100Mi,resources.limits.memory=2Gi,replicas=3 one --create-namespace minio/minio</span><br></pre></td></tr></table></figure>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">helm repo add minio https://charts.min.io/</span><br><span class="line"><span class="comment">#设置密码和磁盘大小，默认也没有tls(根据需求改一下，我就20Gi用于测试)</span></span><br><span class="line">helm upgrade --install --namespace minio --<span class="built_in">set</span> rootUser=rootuser,rootPassword=rootpass123,persistence.size=20Gi,resources.requests.memory=100Mi,resources.limits.memory=2Gi,replicas=3,service.type=NodePort,consoleService.type=NodePort one --create-namespace minio/minio</span><br></pre></td></tr></table></figure>
 
 <p>成功部署日志：</p>
 <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line">espace minio/minio</span><br><span class="line">NAME: one</span><br><span class="line">LAST DEPLOYED: Mon May 22 12:22:31 2023</span><br><span class="line">NAMESPACE: minio</span><br><span class="line">STATUS: deployed</span><br><span class="line">REVISION: 1</span><br><span class="line">TEST SUITE: None</span><br><span class="line">NOTES:</span><br><span class="line">MinIO can be accessed via port 9000 on the following DNS name from within your cluster:</span><br><span class="line">one-minio.minio.svc.cluster.local</span><br><span class="line"></span><br><span class="line">To access MinIO from localhost, run the below commands:</span><br><span class="line"></span><br><span class="line">  1. <span class="built_in">export</span> POD_NAME=$(kubectl get pods --namespace minio -l <span class="string">"release=one"</span> -o jsonpath=<span class="string">"&#123;.items[0].metadata.name&#125;"</span>)</span><br><span class="line"></span><br><span class="line">  2. kubectl port-forward <span class="variable">$POD_NAME</span> 9000 --namespace minio</span><br><span class="line"></span><br><span class="line">Read more about port forwarding here: http://kubernetes.io/docs/user-guide/kubectl/kubectl_port-forward/</span><br><span class="line"></span><br><span class="line">You can now access MinIO server on http://localhost:9000. Follow the below steps to connect to MinIO server with mc client:</span><br><span class="line"></span><br><span class="line">  1. Download the MinIO mc client - https://min.io/docs/minio/linux/reference/minio-mc.html<span class="comment">#quickstart</span></span><br><span class="line"></span><br><span class="line">  2. <span class="built_in">export</span> MC_HOST_one-minio-local=http://$(kubectl get secret --namespace minio one-minio -o jsonpath=<span class="string">"&#123;.data.rootUser&#125;"</span> | base64 --decode):$(kubectl get secret --namespace minio one-minio -o jsonpath=<span class="string">"&#123;.data.rootPassword&#125;"</span> | base64 --decode)@localhost:9000</span><br><span class="line"></span><br><span class="line">  3. mc ls one-minio-local</span><br></pre></td></tr></table></figure>
@@ -1159,80 +1336,12 @@
   
   
 
-        
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block home" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="/2019/11/03/first-blog/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="雄哥good">
-      <meta itemprop="description" content="技术日新月异，碎片化的学习总不得安心，因此开此blog定期记录和总结所思和所得">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="大雄的部落阁">
-    </span>
-      <header class="post-header">
-        <h1 class="post-title" itemprop="name headline">
-          
-            <a href="/2019/11/03/first-blog/" class="post-title-link" itemprop="url">开启个人blog</a>
-        </h1>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="fa fa-calendar-o"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-              
-
-              <time title="创建时间：2019-11-03 00:35:30 / 修改时间：15:54:29" itemprop="dateCreated datePublished" datetime="2019-11-03T00:35:30+08:00">2019-11-03</time>
-            </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="fa fa-folder-o"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E9%9A%8F%E7%AC%94/" itemprop="url" rel="index">
-                    <span itemprop="name">随笔</span>
-                  </a>
-                </span>
-            </span>
-
-          
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <p>最近发现各位大佬的blog风格都挺小清新的，google得知有<a href="https://hexo.io">Hexo</a>这个blog神器，于是也尝试搭建自己的blog用于继续记录自己的所思所得。</p>
-<p>之前的blog都放在<a href="https://www.jianshu.com/u/4d0fe9f124a2">简书</a>上，以后自己的blog都主要会在此更新，简书上面的blog尽力同步更新。</p>
-
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
   </div>
 
   
+  <nav class="pagination">
+    <span class="page-number current">1</span><a class="page-number" href="/page/2/">2</a><a class="extend next" rel="next" href="/page/2/"><i class="fa fa-angle-right" aria-label="下一页"></i></a>
+  </nav>
 
 
 
@@ -1277,7 +1386,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">9</span>
+          <span class="site-state-item-count">11</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
@@ -1290,7 +1399,7 @@
       <div class="site-state-item site-state-tags">
             <a href="/tags/">
           
-        <span class="site-state-item-count">8</span>
+        <span class="site-state-item-count">9</span>
         <span class="site-state-item-name">标签</span></a>
       </div>
   </nav>
@@ -1326,7 +1435,7 @@
 <div class="copyright">
   
   &copy; 
-  <span itemprop="copyrightYear">2023</span>
+  <span itemprop="copyrightYear">2024</span>
   <span class="with-love">
     <i class="fa fa-user"></i>
   </span>
